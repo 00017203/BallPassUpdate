@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Tickets – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Ticket card styles ── */
+    .ticket-print-card {
+      background: white;
+      border: 2px solid var(--gray-200);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap; /* Wraps to next line on small screens */
+      margin-bottom: 12px;
+      position: relative;
+      overflow: hidden; /* Clips the coloured left border stripe */
+    }
+    .ticket-print-card::before {
+      /* ::before is a CSS pseudo-element — creates a decorative element without extra HTML */
+      content: "";           /* Required for pseudo-elements to show */
+      position: absolute;    /* Positioned relative to the card */
+      left: 0; top: 0; bottom: 0; /* Spans full height on the left */
+      width: 6px;            /* Thin vertical stripe */
+      background: linear-gradient(180deg, var(--blue), #0d47a1); /* Gradient from light to dark blue */
+    }
+    .ticket-print-card .ticket-left  { padding-left: 10px; flex: 1; min-width: 200px; }
+    .ticket-print-card .match-name   { font-size: 1.1rem; font-weight: 700; }
+    .ticket-print-card .ticket-right { text-align: right; }
+    .ticket-print-card .seat-big     { font-size: 1.8rem; font-weight: 700; color: var(--blue); }
+    .ticket-print-card .seat-label   { font-size: .75rem; color: var(--gray-400); }
+    .qr-placeholder {
+      /* Placeholder box where a real QR code would go in production */
+      width: 64px; height: 64px;
+      background: var(--gray-100);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+      border: 1px solid var(--gray-200);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar — filled dynamically by JavaScript after session check -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks"></div>
+  <!-- Empty on load — JavaScript writes the correct links after checking who is logged in -->
+</nav>
+
+<!-- Page hero heading -->
+<div class="page-hero">
+  <h1>🎟 My Tickets</h1>
+  <p>Your purchased tickets and booking history.</p>
+</div>
+
+<div class="page-wrapper">
+
+  <!-- ── SUMMARY STATS ROW ─────────────────────────────────────
+       Three stat cards showing key numbers for this buyer.
+       JavaScript fills in the values after loading transaction data. -->
+  <div class="stats-row" style="margin-bottom:28px;">
+    <div class="stat-card">
+      <div class="stat-value" id="totalBought">0</div>
+      <div class="stat-label">Tickets Purchased</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="totalSpent">$0</div>
+      <div class="stat-label">Total Spent</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="upcomingCount">0</div>
+      <div class="stat-label">Upcoming Matches</div>
+    </div>
+  </div>
+
+  <!-- ── TICKET LIST ────────────────────────────────────────────
+       JavaScript fills this section with ticket cards from the DB.
+       Shows a loading state until the data arrives. -->
+  <div class="section-title">🎫 Your Tickets</div>
+  <div id="ticketsList">
+    <div class="empty-state"><div class="icon">⏳</div><p>Loading…</p></div>
+  </div>
+
+</div>
+
+<!-- Toast popup notification -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── PAGE INITIALISATION ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // Step 1: Check who is logged in
+  const meRes = await fetch("/me");            // GET /me — returns current session user
+  const me    = (await meRes.json()).user;     // Extract the user object from the response
+
+  // If not logged in, redirect to landing page immediately
+  if (!me) { window.location.href = "landing.html"; return; }
+
+  // If in seller mode, redirect to seller dashboard — buyers only here
+  if (me.mode === "seller") { window.location.href = "seller-dashboard.html"; return; }
+
+  // Step 2: Build the navbar with the correct links for a buyer
+  document.getElementById("navLinks").innerHTML = `
+    <a href="index.html">Marketplace</a>
+    <a href="buyer-dashboard.html">My Tickets</a>
+    <a href="buyer-analytics.html">Market Trends</a>
+    <span class="nav-user">🎟 ${me.name}</span>
+    <button class="btn-nav" style="background:rgba(255,255,255,.2);margin-right:4px;" onclick="switchToSeller()">Switch to Seller</button>
+    <button class="btn-nav" onclick="logout()">Logout</button>`;
+  // Template literal builds the full HTML string in one go
+
+  // Step 3: Fetch this buyer's transaction history from the server
+  const res = await fetch("/transactions"); // GET /transactions — server returns only THIS user's purchases
+  const txs = await res.json();            // Parse as JSON array of transaction objects
+
+  // Step 4: Compute summary statistics from the transaction data
+  const total    = txs.length; // Total number of purchases
+  const spent    = txs.reduce((s, t) => s + t.price, 0);
+  // .reduce() sums up all prices:
+  // s = running total (starts at 0), t = current transaction, t.price = its price
+  // Result: sum of all prices paid
+
+  const today    = new Date(); // Current date/time
+  const upcoming = txs.filter(t => t.match_date && new Date(t.match_date) > today).length;
+  // .filter() keeps only transactions where the match date is in the future
+  // new Date(t.match_date) converts the date string to a Date object for comparison
+  // .length counts how many passed the filter
+
+  // Step 5: Update the stat card displays
+  document.getElementById("totalBought").textContent  = total;
+  document.getElementById("totalSpent").textContent   = `$${spent}`;
+  document.getElementById("upcomingCount").textContent = upcoming;
+
+  // Step 6: Render ticket cards or empty state
+  const container = document.getElementById("ticketsList");
+
+  if (!txs.length) {
+    // No purchases yet — show empty state with a link to the marketplace
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🎟</div>
+        <p>No tickets yet. <a href="index.html" style="color:var(--blue)">Browse listings</a></p>
+      </div>`;
+    return; // Stop here — nothing more to render
+  }
+
+  // Build HTML for each transaction and join them into one string
+  container.innerHTML = txs.map(t => {
+    const date = t.created_at
+      ? new Date(t.created_at).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" })
+      : "—";
+    // Formats as "19 May 2026" — toLocaleDateString with "en-GB" uses British date format
+
+    const ref = "BP-" + String(t.id).padStart(5, "0");
+    // Creates a booking reference like "BP-00003"
+    // String(t.id) converts the number to a string
+    // .padStart(5, "0") pads with leading zeros to reach 5 characters: "3" → "00003"
+
+    return `
+      <div class="ticket-print-card">
+        <div class="ticket-left">
+          <div class="match-name">⚽ ${esc(t.match)}</div>
+          <div class="ticket-meta" style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="tag">📍 ${esc(t.location)}</span>
+            <span class="tag">🗓 ${date}</span>
+            <span class="tag" style="background:var(--green-bg);color:var(--green);">✔ ${esc(t.status)}</span>
+          </div>
+          <div style="font-size:.78rem; color:var(--gray-400); margin-top:6px;">
+            Booking ref: <strong>${ref}</strong>
+            <!-- Unique booking reference for each ticket -->
+          </div>
+        </div>
+
+        <!-- QR code placeholder — in production would contain a real QR code image -->
+        <div class="qr-placeholder">🎫</div>
+
+        <div class="ticket-right">
+          <div class="seat-big">${esc(t.seat_number || "—")}</div>
+          <!-- t.seat_number||"—" shows a dash if no seat number stored -->
+          <div class="seat-label">SEAT</div>
+          <div style="font-size:1.1rem; font-weight:700; color:var(--blue); margin-top:6px;">$${t.price}</div>
+        </div>
+
+        <!-- Print button row — spans full width because flex-wrap:wrap wraps it to a new line -->
+        <div style="width:100%; display:flex; gap:8px; margin-top:4px;">
+          <button class="btn btn-outline btn-sm"
+            onclick="printTicket(${t.id},'${esc(t.match)}','${esc(t.location)}','${esc(t.seat_number||"-")}','${t.price}','${date}','${ref}')">
+            🖨 Print Ticket
+          </button>
+          <!-- All ticket details are passed as arguments to printTicket() so the print window has everything it needs -->
+        </div>
+      </div>`;
+  }).join(""); // .join("") combines all the HTML strings into one — no separator between cards
+});
+
+// ── printTicket ───────────────────────────────────────────────
+// Opens a new browser window/tab with a printable ticket layout.
+// All the ticket details are passed in as arguments.
+
+function printTicket(id, match, location, seat, price, date, ref) {
+  const win = window.open("", "_blank", "width=600,height=400");
+  // window.open() opens a new window
+  // "" = blank URL (we'll write the HTML ourselves)
+  // "_blank" = open in a new tab
+  // "width=600,height=400" = suggested window size
+
+  win.document.write(`
+    <!DOCTYPE html><html><head><title>BallPass Ticket</title>
+    <style>
+      /* Print-specific CSS — only applies inside this popup window */
+      body { font-family:'Segoe UI',sans-serif; padding:40px; max-width:500px; margin:0 auto; }
+      .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; }
+      .brand  { font-size:1.4rem; font-weight:700; color:#1a73e8; }
+      .ticket-box { border:2px solid #1a73e8; border-radius:12px; padding:24px; }
+      .match  { font-size:1.3rem; font-weight:700; margin-bottom:16px; }
+      .row    { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f1f3f4; font-size:.9rem; }
+      .row:last-child { border:none; }
+      .label  { color:#5f6368; }
+      .value  { font-weight:600; }
+      .seat-big { text-align:center; font-size:2.5rem; font-weight:700; color:#1a73e8; margin:16px 0; }
+      .ref    { text-align:center; font-size:.8rem; color:#9aa0a6; margin-top:16px; }
+      .footer { text-align:center; margin-top:24px; font-size:.8rem; color:#9aa0a6; }
+      @media print { button { display:none; } }
+      /* @media print hides the print button when actually printing — don't print the button */
+    </style></head><body>
+
+    <div class="header">
+      <div class="brand">⚽ BallPass</div>
+      <div style="font-size:.8rem;color:#9aa0a6;">Official Ticket</div>
+    </div>
+
+    <div class="ticket-box">
+      <div class="match">${match}</div>
+      <div class="row"><span class="label">Location</span>    <span class="value">${location}</span></div>
+      <div class="row"><span class="label">Date Purchased</span><span class="value">${date}</span></div>
+      <div class="row"><span class="label">Price Paid</span>   <span class="value">$${price}</span></div>
+      <div class="seat-big">${seat}</div>
+      <div style="text-align:center;font-size:.8rem;color:#5f6368;">YOUR SEAT</div>
+      <div class="ref">Booking Reference: <strong>${ref}</strong></div>
+    </div>
+
+    <div style="text-align:center;margin-top:20px;">
+      <button onclick="window.print()"
+              style="padding:10px 24px;background:#1a73e8;color:white;border:none;border-radius:8px;font-size:.95rem;cursor:pointer;">
+        🖨 Print
+      </button>
+      <!-- window.print() triggers the browser's native print dialog -->
+    </div>
+
+    <div class="footer">
+      This ticket is issued by BallPass. Please bring a printed or digital copy to the match.
+    </div>
+    </body></html>`);
+
+  win.document.close();
+  // .close() tells the browser the document is complete — required after using document.write()
+}
+
+// ── switchToSeller ────────────────────────────────────────────
+// Sends a request to switch the session mode to "seller",
+// then redirects to the seller dashboard.
+
+async function switchToSeller() {
+  await fetch("/set-mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "seller" }) // Tell server to update session mode to "seller"
+  });
+  window.location.href = "seller-dashboard.html"; // Navigate to seller dashboard
+}
+
+// ── logout ────────────────────────────────────────────────────
+async function logout() {
+  await fetch("/logout", { method: "POST" }); // Destroy the session on the server
+  window.location.href = "landing.html";       // Send user back to landing page
+}
+
+// ── esc ───────────────────────────────────────────────────────
+// Escapes HTML special characters to prevent XSS attacks.
+// Also escapes single quotes because values are used inside HTML attribute onclick='...'
+function esc(s) {
+  return String(s || "")
+    .replace(/&/g,  "&amp;")   // & → &amp;
+    .replace(/</g,  "&lt;")    // < → &lt;
+    .replace(/>/g,  "&gt;")    // > → &gt;
+    .replace(/'/g,  "&#39;");  // ' → &#39; (important because values are in onclick='...' attributes)
+}
+</script>
+</body>
+</html>

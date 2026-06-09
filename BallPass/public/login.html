@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Simple navbar for auth pages -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="login.html">Login</a>
+    <a href="register.html" class="btn-nav">Register</a>
+  </div>
+</nav>
+
+<!-- Full-height flex container to centre the form vertically -->
+<div style="display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 60px); padding:20px;">
+
+  <div class="form-card">
+    <h1>Welcome back</h1>
+    <p class="subtitle">Log in to your BallPass account</p>
+
+    <!-- Email field with live and blur validation -->
+    <div class="form-group">
+      <label for="email">Email address</label>
+      <input type="email" id="email" placeholder="you@example.com"
+             oninput="validateEmail()" onblur="validateEmail()" />
+      <!-- oninput = validates as user types; onblur = validates when they leave the field -->
+      <div class="field-error" id="err_email">Please enter a valid email address.</div>
+    </div>
+
+    <!-- Password field -->
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="••••••••"
+             oninput="validatePassword()" onblur="validatePassword()"
+             onkeydown="if(event.key==='Enter') loginUser()" />
+      <!-- onkeydown: pressing Enter submits the login form -->
+      <div class="field-error" id="err_password">Password is required.</div>
+    </div>
+
+    <!-- Login button — id="loginBtn" so JavaScript can disable it during the request -->
+    <button class="btn btn-primary btn-full" onclick="loginUser()" id="loginBtn">Log In</button>
+
+    <!-- Status message area — JavaScript writes success or error here -->
+    <div class="form-message" id="loginMsg"></div>
+
+    <!-- Link to register if the user doesn't have an account -->
+    <p style="text-align:center; margin-top:20px; font-size:.88rem; color:var(--gray-600);">
+      Don't have an account? <a href="register.html" style="color:var(--blue); font-weight:600;">Register</a>
+    </p>
+
+    <!-- Demo credentials hint — makes testing easier -->
+    <div style="margin-top:20px; padding:12px 16px; background:var(--blue-light); border-radius:8px; font-size:.8rem; color:var(--gray-600);">
+      <strong>Demo account:</strong> demo@ballpass.com / demo1234
+    </div>
+  </div>
+</div>
+
+<script>
+// ── VALIDATION FUNCTIONS ──────────────────────────────────────
+// These run on every keystroke and when the user leaves each field.
+
+function validateEmail() {
+  const val = document.getElementById("email").value; // Current value of the email input
+  const ok  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val); // Regex check for valid email format
+  setFieldState("email", "err_email", ok || val === "");
+  // If the field is completely empty, don't show an error yet (wait until they type something)
+  // ok || val === "" means: show as valid if it passes validation OR if it's empty
+  return ok; // Returns the actual validity (empty is not truly valid for submission)
+}
+
+function validatePassword() {
+  const val = document.getElementById("password").value; // Current password value
+  const ok  = val.length > 0; // Password just needs to not be empty
+  setFieldState("password", "err_password", ok);
+  return ok;
+}
+
+// ── setFieldState ─────────────────────────────────────────────
+// Shows or hides the error state on a field.
+// valid = true → remove red border and hide error message
+// valid = false → add red border and show error message
+
+function setFieldState(inputId, errId, valid) {
+  const el  = document.getElementById(inputId); // The input element
+  const err = document.getElementById(errId);   // The error message div
+  if (valid) {
+    el.classList.remove("error");  // Remove red border class
+    err.classList.remove("show");  // Hide error message
+  } else {
+    el.classList.add("error");     // Add red border class
+    err.classList.add("show");     // Show error message (CSS adds it to the layout)
+  }
+}
+
+// ── loginUser ─────────────────────────────────────────────────
+// Validates fields and sends login credentials to the server.
+// On success, redirects to the mode selection screen.
+
+async function loginUser() {
+  // Run both validators and check results
+  const emailOk = validateEmail();
+  const passOk  = validatePassword();
+  if (!emailOk || !passOk) return; // Stop if either field is invalid
+
+  // Disable button to prevent duplicate requests while waiting for server
+  const btn = document.getElementById("loginBtn");
+  btn.disabled = true;
+  btn.textContent = "Logging in…"; // Feedback to user
+
+  const email    = document.getElementById("email").value.trim();    // Trim whitespace from email
+  const password = document.getElementById("password").value;        // Password (no trim — spaces could be intentional)
+  const msg      = document.getElementById("loginMsg");              // Status message div
+
+  try {
+    const res = await fetch("/login", {
+      method: "POST",                                   // POST to send credentials securely
+      headers: { "Content-Type": "application/json" },  // Sending JSON
+      body: JSON.stringify({ email, password })
+      // Shorthand property: { email, password } is the same as { email: email, password: password }
+    });
+
+    const data = await res.json(); // Parse server response
+
+    if (res.ok) {
+      // Login succeeded — server started a session and returned the user object
+      msg.className   = "form-message success";
+      msg.textContent = `✅ Welcome back, ${data.user.name}! Redirecting…`;
+      // Uses the name from the server response to personalise the message
+      setTimeout(() => window.location.href = "choose-mode.html", 900);
+      // After 0.9 seconds, redirect to choose-mode page so user picks buyer or seller
+    } else {
+      // Login failed — wrong email or password
+      msg.className   = "form-message error";
+      msg.textContent = "❌ " + data.message; // e.g. "Invalid email or password."
+      btn.disabled    = false;
+      btn.textContent = "Log In"; // Re-enable button for retry
+    }
+  } catch {
+    // Network or server error
+    msg.className   = "form-message error";
+    msg.textContent = "❌ Network error. Please try again.";
+    btn.disabled    = false;
+    btn.textContent = "Log In";
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Market Trends – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- Navbar filled dynamically after session check -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks"></div>
+</nav>
+
+<div class="page-hero">
+  <h1>📈 Market Trends</h1>
+  <p>Platform-wide ticket prices and availability to help you buy smart.</p>
+</div>
+
+<div class="page-wrapper">
+
+  <!-- ── STAT CARDS ─────────────────────────────────────────────
+       Shows market-wide stats plus the buyer's personal spending total. -->
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-value" id="st_available">—</div><div class="stat-label">Available Tickets</div></div>
+    <!-- Total tickets listed minus total sold = currently available -->
+    <div class="stat-card"><div class="stat-value" id="st_avg">—</div>      <div class="stat-label">Avg Market Price</div></div>
+    <!-- Average of all city average prices — a platform-wide price indicator -->
+    <div class="stat-card"><div class="stat-value" id="st_low">—</div>      <div class="stat-label">Lowest City Avg</div></div>
+    <!-- The city with the lowest average ticket price -->
+    <div class="stat-card"><div class="stat-value" id="st_spent">—</div>    <div class="stat-label">My Total Spent</div></div>
+    <!-- Sum of all prices paid by this buyer across all their transactions -->
+  </div>
+
+  <!-- ── CHARTS GRID ────────────────────────────────────────────
+       Four charts showing different views of market data. -->
+  <div class="charts-grid">
+    <div class="chart-card"><h3>Tickets Available by City</h3><canvas id="c1" height="220"></canvas></div>
+    <!-- c1: Bar chart — how many available listings exist in each city -->
+    <div class="chart-card"><h3>Average Price by City</h3>    <canvas id="c2" height="220"></canvas></div>
+    <!-- c2: Horizontal bar chart — average price per city (helps buyers compare markets) -->
+    <div class="chart-card"><h3>Market Price Ranges</h3>      <canvas id="c3" height="220"></canvas></div>
+    <!-- c3: Doughnut chart — what price brackets most tickets fall into -->
+    <div class="chart-card"><h3>My Spending History</h3>      <canvas id="c4" height="220"></canvas></div>
+    <!-- c4: Line chart — shows the price of each of this buyer's purchases over time -->
+  </div>
+
+</div>
+
+<script>
+// Shared colour palette used across all charts
+const PALETTE = ["#1a73e8","#e53935","#43a047","#fb8c00","#8e24aa","#00acc1"];
+
+// ── PAGE INITIALISATION ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // ── Session and mode checks ──
+  const me = (await (await fetch("/me")).json()).user;
+  // Chain of two awaits: first fetches, second parses JSON
+  // .user extracts just the user object from { user: {...} }
+
+  if (!me) { window.location.href = "landing.html"; return; }
+  // Not logged in — redirect to landing
+
+  if (me.mode === "seller") { window.location.href = "seller-dashboard.html"; return; }
+  // Sellers should not see buyer analytics — redirect to seller dashboard
+
+  // ── Build navbar ──
+  document.getElementById("navLinks").innerHTML = `
+    <a href="index.html">Marketplace</a>
+    <a href="buyer-dashboard.html">My Tickets</a>
+    <a href="buyer-analytics.html">Market Trends</a>
+    <span class="nav-user">🎟 ${me.name}</span>
+    <button class="btn-nav" style="background:rgba(255,255,255,.2);margin-right:4px;" onclick="switchMode('seller')">Switch to Seller</button>
+    <button class="btn-nav" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='landing.html')">Logout</button>`;
+
+  // ── Fetch both data sources simultaneously ──
+  const [stats, txs] = await Promise.all([
+    fetch("/api/stats").then(r => r.json()),       // Platform-wide stats (listings, prices, cities)
+    fetch("/transactions").then(r => r.json())     // This buyer's personal purchase history
+  ]);
+  // Promise.all sends both requests at the same time for efficiency
+
+  // ── Compute and display stat card values ──
+
+  const spent = txs.reduce((s, t) => s + t.price, 0);
+  // .reduce() sums all transaction prices: s = running total, t.price = each transaction's price
+
+  document.getElementById("st_available").textContent =
+    stats.summary.totalTickets - stats.summary.totalSold;
+  // Available = total listed minus already sold
+
+  document.getElementById("st_avg").textContent = `$${
+    stats.avgPriceByLocation.length
+      ? Math.round(
+          stats.avgPriceByLocation.reduce((s, r) => s + r.avg_price, 0) /
+          stats.avgPriceByLocation.length
+        )
+      : 0
+  }`;
+  // Average of all city averages:
+  // 1. .reduce() sums all avg_price values from each city
+  // 2. Divide by number of cities to get the overall average
+  // 3. Math.round() removes decimals for cleaner display
+  // Ternary handles the case where no cities exist yet (avoid divide by zero)
+
+  document.getElementById("st_low").textContent =
+    stats.byLocation.length
+      ? `$${Math.min(...stats.avgPriceByLocation.map(r => r.avg_price))}`
+      : "-";
+  // Math.min(...array) finds the smallest value in an array
+  // The spread operator (...) expands the array into individual arguments for Math.min
+  // .map(r => r.avg_price) extracts just the price values from the city objects
+  // Falls back to "-" if no cities exist
+
+  document.getElementById("st_spent").textContent = `$${spent}`;
+
+  // ── Chart 1: Tickets Available by City (Bar chart) ──────────
+  // Uses the byLocation data from /api/stats — already counted by the server
+
+  new Chart(document.getElementById("c1"), {
+    type: "bar",
+    data: {
+      labels:   stats.byLocation.map(r => r.location), // City names as x-axis labels
+      datasets: [{
+        label: "Listings",
+        data:  stats.byLocation.map(r => r.count),     // Available ticket counts per city
+        backgroundColor: PALETTE,  // Different colour per city bar
+        borderRadius: 6
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales:  { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      // stepSize:1 ensures whole number ticks (can't have 1.5 tickets)
+    }
+  });
+
+  // ── Chart 2: Average Price by City (Horizontal bar chart) ────
+  // indexAxis:"y" rotates the chart — cities on y-axis, prices on x-axis
+
+  new Chart(document.getElementById("c2"), {
+    type: "bar",
+    data: {
+      labels:   stats.avgPriceByLocation.map(r => r.location),   // City names
+      datasets: [{
+        label: "Avg $",
+        data:  stats.avgPriceByLocation.map(r => r.avg_price),   // Average price per city
+        backgroundColor: "#1a73e8",
+        borderRadius: 6
+      }]
+    },
+    options: {
+      indexAxis: "y", // This single option makes the bar chart horizontal
+      plugins: { legend: { display: false } },
+      scales:  { x: { beginAtZero: true } } // x-axis (price) starts at 0
+    }
+  });
+
+  // ── Chart 3: Market Price Ranges (Doughnut chart) ────────────
+  // Shows the distribution of all tickets across price brackets platform-wide
+  // Data comes from the server's SQL CASE WHEN query
+
+  new Chart(document.getElementById("c3"), {
+    type: "doughnut",
+    data: {
+      labels:   stats.priceRanges.map(r => r.range), // Bracket labels e.g. "$50-$99"
+      datasets: [{
+        data:            stats.priceRanges.map(r => r.count), // Number of tickets in each bracket
+        backgroundColor: PALETTE,
+        borderWidth: 2,
+        borderColor: "#fff"
+      }]
+    },
+    options: { plugins: { legend: { position: "bottom" } } }
+  });
+
+  // ── Chart 4: My Spending History (Line chart) ────────────────
+  // Shows the price of each of this buyer's purchases as a connected line
+  // Helps buyers see if they are overpaying compared to their history
+
+  new Chart(document.getElementById("c4"), {
+    type: "line",
+    data: {
+      labels: txs.map((_, i) => `Purchase ${i + 1}`),
+      // _ is the transaction object (unused), i is the index (0, 1, 2...)
+      // Creates labels like "Purchase 1", "Purchase 2", etc.
+      datasets: [{
+        label: "$",
+        data:  txs.map(t => t.price), // Price of each transaction
+        borderColor:     "#43a047",               // Green line colour
+        backgroundColor: "rgba(67,160,71,.12)",   // Very faint green fill under the line
+        fill:    true,    // Fill the area under the line
+        tension: 0.4,     // 0 = straight lines between points, 1 = very curved — 0.4 is slightly curved
+        pointRadius: 5    // Size of the dot at each data point
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales:  { y: { beginAtZero: true } }
+    }
+  });
+});
+
+// ── switchMode ────────────────────────────────────────────────
+// Updates session mode and redirects to the appropriate page.
+async function switchMode(mode) {
+  await fetch("/set-mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode })
+  });
+  window.location.href = mode === "seller" ? "seller-dashboard.html" : "index.html";
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify Account – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Six separate digit input boxes ── */
+    .code-inputs {
+      display: flex;
+      gap: 10px;             /* Space between each box */
+      justify-content: center;
+      margin: 24px 0;
+    }
+    .code-input {
+      width: 52px; height: 60px; /* Square-ish boxes */
+      text-align: center;         /* Centre the digit inside */
+      font-size: 1.6rem;          /* Large digit text */
+      font-weight: 700;
+      border: 2px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      outline: none;              /* Remove browser default focus ring */
+      transition: border-color .15s; /* Smooth colour change on focus */
+    }
+    .code-input:focus {
+      border-color: var(--blue);                    /* Blue border when active */
+      box-shadow: 0 0 0 3px rgba(26,115,232,.12);  /* Subtle blue glow */
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks">
+    <!-- Default link — JavaScript adds the user's name after session check -->
+    <a href="index.html">Marketplace</a>
+  </div>
+</nav>
+
+<!-- Centred card layout -->
+<div style="display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 60px); padding:20px;">
+  <div class="form-card" style="max-width:420px; text-align:center;">
+
+    <!-- ── ALREADY VERIFIED STATE ──────────────────────────────
+         Shown instead of the form if the user is already verified.
+         Hidden by default — JavaScript shows it if status.verified is true. -->
+    <div id="alreadyVerified" style="display:none;">
+      <div style="font-size:3rem; margin-bottom:12px;">✅</div>
+      <h1 style="margin-bottom:8px;">Account Verified</h1>
+      <p style="color:var(--gray-600); margin-bottom:24px;">Your account is already verified. You can buy and sell tickets freely.</p>
+      <a href="index.html" class="btn btn-primary">Browse Tickets</a>
+    </div>
+
+    <!-- ── VERIFICATION FORM ────────────────────────────────────
+         Shown to unverified users. Has two sub-steps:
+         1. stepRequest — button to request the code
+         2. stepCode    — six boxes to enter the code (hidden until code is sent) -->
+    <div id="verifyForm">
+      <div style="font-size:3rem; margin-bottom:12px;">🔐</div>
+      <h1 style="margin-bottom:8px;">Verify Your Account</h1>
+      <p style="color:var(--gray-600); margin-bottom:24px; font-size:.9rem;">
+        To buy or sell tickets on BallPass, you need to verify your account.
+        We'll send a 6-digit code to confirm your identity.
+      </p>
+
+      <!-- ── STEP 1: Request code ─────────────────────────────
+           Shown first. Clicking the button calls sendCode(). -->
+      <div id="stepRequest">
+        <p style="font-size:.85rem; color:var(--gray-600); margin-bottom:16px;">
+          Click below to receive your verification code.
+        </p>
+        <button class="btn btn-primary btn-full" onclick="sendCode()" id="sendBtn">
+          📨 Send Verification Code
+        </button>
+        <div class="form-message" id="sendMsg"></div>
+        <!-- sendMsg shows the code after it's sent (in demo mode) -->
+      </div>
+
+      <!-- ── STEP 2: Enter code ───────────────────────────────
+           Hidden by default — shown after the code is sent.
+           Six separate single-character inputs for the 6-digit code.
+           maxlength="1" restricts each box to one character. -->
+      <div id="stepCode" style="display:none;">
+        <p style="font-size:.85rem; color:var(--gray-600); margin-bottom:8px;">
+          Enter the 6-digit code below:
+        </p>
+
+        <div class="code-inputs">
+          <!-- Each input has oninput="nextInput(N)" where N is its index (0-5) -->
+          <!-- nextInput() automatically moves focus to the next box when a digit is typed -->
+          <input class="code-input" maxlength="1" id="c0" oninput="nextInput(0)" />
+          <input class="code-input" maxlength="1" id="c1" oninput="nextInput(1)" />
+          <input class="code-input" maxlength="1" id="c2" oninput="nextInput(2)" />
+          <input class="code-input" maxlength="1" id="c3" oninput="nextInput(3)" />
+          <input class="code-input" maxlength="1" id="c4" oninput="nextInput(4)" />
+          <input class="code-input" maxlength="1" id="c5" oninput="nextInput(5)" />
+          <!-- Filling the last box (c5) also auto-submits the code via nextInput() -->
+        </div>
+
+        <button class="btn btn-primary btn-full" onclick="verifyCode()" id="verifyBtn">
+          ✅ Verify Code
+        </button>
+        <div class="form-message" id="verifyMsg"></div>
+
+        <!-- Resend link — calls sendCode() again which generates a new code -->
+        <p style="margin-top:14px; font-size:.8rem; color:var(--gray-400);">
+          Didn't receive it?
+          <a href="#" onclick="sendCode(); return false;" style="color:var(--blue);">Resend code</a>
+          <!-- return false prevents the # link from scrolling to the top of the page -->
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── PAGE INITIALISATION ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // Check session — must be logged in to verify
+  const me = (await fetch("/me").then(r => r.json())).user;
+  // Chained: fetch → .then(parse JSON) → .user extracts the user object
+
+  if (!me) { window.location.href = "login.html"; return; }
+  // Not logged in — redirect to login
+
+  // Update navbar with user's name
+  document.getElementById("navLinks").innerHTML = `
+    <a href="index.html">Marketplace</a>
+    <span class="nav-user">👋 ${me.name}</span>`;
+
+  // Check if the user is already verified
+  const status = await fetch("/verification-status").then(r => r.json());
+  // GET /verification-status — returns { verified: true } or { verified: false }
+
+  if (status.verified) {
+    // Already verified — show the "already verified" panel instead of the form
+    document.getElementById("verifyForm").style.display      = "none";  // Hide the form
+    document.getElementById("alreadyVerified").style.display = "block"; // Show the verified message
+  }
+  // If not verified, the form is already visible by default — nothing to do
+});
+
+// ── nextInput ─────────────────────────────────────────────────
+// Called on every keystroke in a code input box.
+// Automatically moves focus to the next box, and auto-submits when all 6 are filled.
+
+function nextInput(i) {
+  const val = document.getElementById(`c${i}`).value;
+  // Gets the current value of the input with id "c0", "c1", etc.
+  // Template literal `c${i}` builds the ID dynamically from the index
+
+  if (val && i < 5) {
+    document.getElementById(`c${i + 1}`).focus();
+    // If a digit was typed AND this isn't the last box, move focus to the next box
+    // i < 5 prevents trying to focus "c6" which doesn't exist
+  }
+
+  if (i === 5 && val) {
+    verifyCode();
+    // If this is the LAST box (index 5) and a digit was just typed, auto-submit
+    // This means the user doesn't need to click the Verify button after typing the 6th digit
+  }
+}
+
+// ── sendCode ──────────────────────────────────────────────────
+// Requests a new verification code from the server.
+// The server generates a 6-digit code, stores it, and returns it (in demo mode).
+
+async function sendCode() {
+  const btn = document.getElementById("sendBtn");
+  btn.disabled    = true;       // Prevent double-clicking
+  btn.textContent = "Sending…"; // Visual feedback
+
+  const res  = await fetch("/send-code", { method: "POST" });
+  // POST /send-code — no body needed, server knows who to send it to from the session
+
+  const data = await res.json();
+  const msg  = document.getElementById("sendMsg");
+
+  if (res.ok) {
+    // Code sent successfully
+    msg.className   = "form-message success";
+    msg.textContent = `✅ ${data.message} Your code is: ${data.code}`;
+    // In demo mode, the code is returned in the response and displayed on screen
+    // In production, only an email confirmation message would be shown — not the code itself
+
+    // Transition from Step 1 to Step 2: hide request button, show code inputs
+    document.getElementById("stepRequest").style.display = "none";  // Hide "Send" button
+    document.getElementById("stepCode").style.display    = "block"; // Show code inputs
+
+    document.getElementById("c0").focus(); // Auto-focus the first digit box
+  } else {
+    // Failed to send
+    msg.className   = "form-message error";
+    msg.textContent = "❌ " + data.message;
+    btn.disabled    = false;
+    btn.textContent = "📨 Send Verification Code"; // Re-enable button for retry
+  }
+}
+
+// ── verifyCode ────────────────────────────────────────────────
+// Collects all 6 digit inputs, sends them to the server for verification.
+// On success, redirects back to wherever the user came from.
+
+async function verifyCode() {
+  // Collect all 6 digits and combine into a single string
+  const code = [0, 1, 2, 3, 4, 5]
+    .map(i => document.getElementById(`c${i}`).value) // Get value from each box
+    .join("");
+  // .join("") concatenates without separator: ["1","2","3","4","5","6"] → "123456"
+
+  if (code.length < 6) return;
+  // If any box is empty, code will be shorter than 6 characters — stop and wait
+
+  const btn = document.getElementById("verifyBtn");
+  btn.disabled    = true;
+  btn.textContent = "Verifying…";
+
+  const res = await fetch("/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }) // Send the 6-digit string to the server
+  });
+
+  const data = await res.json();
+  const msg  = document.getElementById("verifyMsg");
+
+  if (res.ok) {
+    // Verification successful — account is now marked as verified in the database
+    msg.className   = "form-message success";
+    msg.textContent = "✅ " + data.message; // e.g. "Account verified successfully!"
+
+    setTimeout(() => {
+      // After 1.5 seconds, redirect back to where the user was trying to go
+      const redirect = new URLSearchParams(location.search).get("redirect") || "index.html";
+      // URLSearchParams parses the URL query string
+      // location.search is the "?redirect=seat-selector.html?id=3" part of the URL
+      // .get("redirect") extracts the value of the "redirect" parameter
+      // || "index.html" defaults to the marketplace if no redirect was specified
+
+      window.location.href = redirect; // Navigate to the redirect destination
+    }, 1500);
+
+  } else {
+    // Verification failed — wrong code, expired code, etc.
+    msg.className   = "form-message error";
+    msg.textContent = "❌ " + data.message; // Server's error message (e.g. "Incorrect code")
+
+    btn.disabled    = false;
+    btn.textContent = "✅ Verify Code"; // Re-enable for retry
+
+    // Clear all 6 input boxes so the user can try again cleanly
+    [0, 1, 2, 3, 4, 5].forEach(i => document.getElementById(`c${i}`).value = "");
+    // .forEach() iterates the array — sets each box's value to empty string
+
+    document.getElementById("c0").focus(); // Put cursor back at the first box
+  }
+}
+</script>
+</body>
+</html>

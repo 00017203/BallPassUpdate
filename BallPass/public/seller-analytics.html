@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seller Analytics – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js from CDN — provides the Chart class used to create all 4 charts below -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- Navbar filled dynamically after session check -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks"></div>
+</nav>
+
+<!-- Page heading -->
+<div class="page-hero">
+  <h1>📊 Seller Analytics</h1>
+  <p>Your personal sales performance and listing statistics.</p>
+</div>
+
+<div class="page-wrapper">
+
+  <!-- ── STAT CARDS ROW ────────────────────────────────────────
+       Four summary numbers filled by JavaScript after data loads. -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card"><div class="stat-value" id="st_revenue">—</div><div class="stat-label">Total Revenue</div></div>
+    <div class="stat-card"><div class="stat-value" id="st_sold">—</div>   <div class="stat-label">Tickets Sold</div></div>
+    <div class="stat-card"><div class="stat-value" id="st_active">—</div> <div class="stat-label">Active Listings</div></div>
+    <div class="stat-card"><div class="stat-value" id="st_rate">—</div>   <div class="stat-label">Sell-Through Rate</div></div>
+  </div>
+
+  <!-- ── CHARTS GRID ────────────────────────────────────────────
+       Four Chart.js charts, each in its own card.
+       Each <canvas> is where Chart.js draws the chart graphics. -->
+  <div class="charts-grid">
+    <div class="chart-card"><h3>Revenue by Match</h3>    <canvas id="c1" height="220"></canvas></div>
+    <!-- c1: Bar chart — each bar = one match, height = total revenue -->
+    <div class="chart-card"><h3>Listings by Section</h3> <canvas id="c2" height="220"></canvas></div>
+    <!-- c2: Doughnut chart — each slice = one section, size = number of listings -->
+    <div class="chart-card"><h3>Price Distribution</h3>  <canvas id="c3" height="220"></canvas></div>
+    <!-- c3: Bar chart — groups listings into price brackets -->
+    <div class="chart-card"><h3>Available vs Sold</h3>   <canvas id="c4" height="220"></canvas></div>
+    <!-- c4: Doughnut chart — shows the ratio of available to sold tickets -->
+  </div>
+
+</div>
+
+<script>
+// ── COLOUR PALETTE ────────────────────────────────────────────
+// Array of hex colours used across the charts for consistency.
+// Each chart section/bar gets a different colour from this array.
+const PALETTE = ["#1a73e8","#e53935","#43a047","#fb8c00","#8e24aa","#00acc1"];
+// Blue, Red, Green, Orange, Purple, Teal
+
+// ── PAGE INITIALISATION ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // ── Session check ──
+  // Double await: first await fetches the response, second await parses the JSON
+  const me = (await (await fetch("/me")).json()).user;
+
+  // Guard: not logged in
+  if (!me) { window.location.href = "landing.html"; return; }
+
+  // Guard: wrong mode — sellers only
+  if (me.mode !== "seller") { window.location.href = "seller-dashboard.html"; return; }
+  // If a buyer somehow lands here, redirect them to their own dashboard
+
+  // ── Build navbar ──
+  document.getElementById("navLinks").innerHTML = `
+    <a href="index.html">Marketplace</a>
+    <a href="seller-dashboard.html">Dashboard</a>
+    <a href="seller-analytics.html">Analytics</a>
+    <span class="nav-user">🏷 ${me.name}</span>
+    <button class="btn-nav" style="background:rgba(255,255,255,.2);margin-right:4px;" onclick="switchMode('buyer')">Switch to Buyer</button>
+    <button class="btn-nav" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='landing.html')">Logout</button>`;
+  // Logout button uses an inline .then() to redirect after the server responds
+
+  // ── Fetch data in parallel ──
+  // Promise.all() sends both requests at the same time — more efficient than sequential awaits
+  const [listings, stats] = await Promise.all([
+    fetch("/my-listings").then(r => r.json()),       // All tickets listed by this seller
+    fetch("/api/seller-stats").then(r => r.json())   // Computed stats for this seller
+  ]);
+  // The .then(r=>r.json()) parses each response immediately when it arrives
+  // Promise.all waits for both to finish before continuing
+
+  // ── Update stat cards ──
+  document.getElementById("st_revenue").textContent = `$${stats.totalRevenue}`;
+  document.getElementById("st_sold").textContent    = stats.totalSold;
+  document.getElementById("st_active").textContent  = stats.totalActive;
+  document.getElementById("st_rate").textContent    = stats.convRate + "%";
+
+  // ── Chart 1: Revenue by Match (Bar chart) ──────────────────
+  // Build a map of { matchName: totalRevenue } from sold tickets only
+
+  const revMap = {};
+  listings
+    .filter(t => t.status === "sold") // Only sold tickets contribute revenue
+    .forEach(t => {
+      revMap[t.match] = (revMap[t.match] || 0) + t.price;
+      // If this match already has an entry, add this ticket's price to it
+      // If not, start from 0 then add
+    });
+
+  new Chart(document.getElementById("c1"), {
+    type: "bar",
+    data: {
+      labels:   Object.keys(revMap).length  ? Object.keys(revMap)   : ["No sales yet"],
+      // Object.keys() gets the match names (the keys of revMap)
+      // Falls back to ["No sales yet"] if the object is empty
+      datasets: [{
+        label: "$",
+        data: Object.values(revMap).length ? Object.values(revMap) : [0],
+        // Object.values() gets the revenue amounts (the values of revMap)
+        backgroundColor: PALETTE, // Different colour per bar
+        borderRadius: 6           // Rounded bar tops
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } }, // No legend needed — labels already on x-axis
+      scales:  { y: { beginAtZero: true } }    // Y-axis starts at 0
+    }
+  });
+
+  // ── Chart 2: Listings by Section (Doughnut chart) ──────────
+  // Count how many total listings (any status) are in each section
+
+  const secMap = {};
+  listings.forEach(t => {
+    secMap[t.section || "?"] = (secMap[t.section || "?"] || 0) + 1;
+    // t.section||"?" handles tickets with no section stored
+  });
+
+  new Chart(document.getElementById("c2"), {
+    type: "doughnut",
+    data: {
+      labels:   Object.keys(secMap),   // Section names (A, B, C, D, VIP)
+      datasets: [{
+        data:            Object.values(secMap), // Listing counts per section
+        backgroundColor: PALETTE,              // Colours from palette
+        borderWidth:  2,                       // Gap between slices
+        borderColor: "#fff"                    // White gap colour
+      }]
+    },
+    options: { plugins: { legend: { position: "bottom" } } }
+    // Legend shows colour = section mapping below the chart
+  });
+
+  // ── Chart 3: Price Distribution (Bar chart) ────────────────
+  // Groups listings into price brackets and counts how many are in each bracket
+
+  const ranges = { "<$50":0, "$50-99":0, "$100-149":0, "$150-199":0, "$200+":0 };
+  // Pre-defined brackets with initial count of 0
+
+  listings.forEach(t => {
+    // For each ticket, determine which bracket it falls into and increment
+    if      (t.price < 50)  ranges["<$50"]++;
+    else if (t.price < 100) ranges["$50-99"]++;
+    else if (t.price < 150) ranges["$100-149"]++;
+    else if (t.price < 200) ranges["$150-199"]++;
+    else                    ranges["$200+"]++;
+    // if/else if means only ONE branch runs per ticket
+  });
+
+  new Chart(document.getElementById("c3"), {
+    type: "bar",
+    data: {
+      labels:   Object.keys(ranges),   // Bracket names as x-axis labels
+      datasets: [{
+        label: "Tickets",
+        data:  Object.values(ranges),  // Count of tickets in each bracket
+        backgroundColor: "#1a73e8",   // Single colour for all bars
+        borderRadius: 6
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales:  { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+      // stepSize:1 means y-axis ticks go 0, 1, 2, 3 — no fractional ticks (can't have 0.5 tickets)
+    }
+  });
+
+  // ── Chart 4: Available vs Sold (Doughnut chart) ─────────────
+  // Simple two-slice chart showing the ratio of available vs sold
+
+  const avail = listings.filter(t => t.status === "available").length;
+  // .filter() keeps only available tickets, .length counts them
+  const sold  = listings.filter(t => t.status === "sold").length;
+  // Same for sold tickets
+
+  new Chart(document.getElementById("c4"), {
+    type: "doughnut",
+    data: {
+      labels:   ["Available", "Sold"],     // Two slices
+      datasets: [{
+        data:            [avail, sold],    // Two values
+        backgroundColor: ["#1a73e8", "#43a047"], // Blue = available, Green = sold
+        borderWidth: 2,
+        borderColor: "#fff"
+      }]
+    },
+    options: { plugins: { legend: { position: "bottom" } } }
+  });
+});
+
+// ── switchMode ────────────────────────────────────────────────
+// Updates the session mode on the server and redirects accordingly.
+async function switchMode(mode) {
+  await fetch("/set-mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }) // Shorthand: { mode } is same as { mode: mode }
+  });
+  window.location.href = mode === "seller" ? "seller-dashboard.html" : "index.html";
+  // Redirect to the appropriate page for the new mode
+}
+</script>
+</body>
+</html>

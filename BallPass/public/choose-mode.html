@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Choose Mode – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Mode selection page styles ── */
+
+    .mode-wrap {
+      min-height: calc(100vh - 60px); /* Fill full viewport height minus the navbar */
+      display: flex;
+      flex-direction: column;          /* Stack title, subtitle, and cards vertically */
+      align-items: center;             /* Centre horizontally */
+      justify-content: center;         /* Centre vertically */
+      padding: 40px 20px;
+    }
+
+    .mode-title { font-size: 1.6rem; font-weight: 700; margin-bottom: 6px; text-align: center; }
+    .mode-sub   { color: var(--gray-600); margin-bottom: 40px; text-align: center; font-size: .95rem; }
+
+    .mode-cards { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+    /* flex-wrap:wrap stacks cards vertically on small screens */
+
+    .mode-card {
+      width: 240px;
+      border: 2.5px solid var(--gray-200); /* Default grey border */
+      border-radius: 16px;
+      padding: 36px 24px;
+      text-align: center;
+      cursor: pointer;                      /* Shows hand cursor on hover */
+      background: white;
+      transition: all .2s;                  /* Smooth animation for hover effects */
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Hover effects — card lifts up and changes colour */
+    .mode-card:hover {
+      border-color: var(--blue);
+      box-shadow: var(--shadow-md);
+      transform: translateY(-4px); /* Moves card 4px upward — creates a "lift" effect */
+    }
+
+    .mode-card .mode-icon { font-size: 3.5rem; margin-bottom: 16px; }
+    .mode-card .mode-name { font-size: 1.2rem; font-weight: 700; margin-bottom: 8px; }
+    .mode-card .mode-desc { font-size: .85rem; color: var(--gray-600); line-height: 1.6; }
+
+    /* Different hover colours for buyer and seller cards */
+    .mode-card.buyer:hover  { border-color: #1a73e8; background: #e8f0fd; } /* Blue theme */
+    .mode-card.seller:hover { border-color: #2e7d32; background: #e8f5e9; } /* Green theme */
+    .mode-card.buyer:hover  .mode-name { color: #1a73e8; } /* Blue text on hover */
+    .mode-card.seller:hover .mode-name { color: #2e7d32; } /* Green text on hover */
+
+    .mode-card .btn {
+      margin-top: 20px;
+      width: 100%;
+      pointer-events: none; /* Disable click events on the button itself — the whole card is clickable */
+    }
+    /* Button colours per card type */
+    .mode-card.buyer  .btn { background: var(--blue);  color: white; }
+    .mode-card.seller .btn { background: var(--green); color: white; }
+  </style>
+</head>
+<body>
+
+<!-- Navbar — filled by JavaScript after session check -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks"></div>
+</nav>
+
+<!-- ── MODE SELECTION SCREEN ─────────────────────────────────
+     Shown after login/register so the user picks buyer or seller mode.
+     The whole card is clickable — onclick on the div calls chooseMode(). -->
+<div class="mode-wrap">
+
+  <!-- Greeting — JavaScript replaces "Welcome back!" with the user's actual name -->
+  <div class="mode-title" id="greeting">Welcome back!</div>
+  <p class="mode-sub">How would you like to use BallPass today?</p>
+
+  <div class="mode-cards">
+
+    <!-- Buyer card — clicking this sets mode to "buyer" and goes to marketplace -->
+    <div class="mode-card buyer" onclick="chooseMode('buyer')">
+      <div class="mode-icon">🎟</div>
+      <div class="mode-name">Enter as Buyer</div>
+      <div class="mode-desc">Browse listings, select seats, purchase tickets and manage your ticket collection.</div>
+      <div class="btn">Browse Tickets →</div>
+      <!-- pointer-events:none on .btn means clicking the button triggers the parent div's onclick -->
+    </div>
+
+    <!-- Seller card — clicking this sets mode to "seller" and goes to seller dashboard -->
+    <div class="mode-card seller" onclick="chooseMode('seller')">
+      <div class="mode-icon">💰</div>
+      <div class="mode-name">Enter as Seller</div>
+      <div class="mode-desc">List your tickets, track your revenue, and manage your seat-by-seat performance.</div>
+      <div class="btn" style="background:var(--green);">Go to Dashboard →</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── PAGE INITIALISATION ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // Check who is logged in
+  const res  = await fetch("/me");          // GET /me — returns session user or null
+  const data = await res.json();            // Parse JSON: { user: {...} } or { user: null }
+
+  if (!data.user) {
+    window.location.href = "landing.html"; // Not logged in — redirect to landing page
+    return;
+  }
+
+  // Personalise the greeting with the user's name
+  document.getElementById("greeting").textContent = `Welcome back, ${data.user.name}!`;
+
+  // Build the navbar — simple version with just Marketplace and Logout
+  document.getElementById("navLinks").innerHTML = `
+    <a href="index.html">Marketplace</a>
+    <span class="nav-user">👋 ${data.user.name}</span>
+    <button class="btn-nav" onclick="logout()">Logout</button>`;
+});
+
+// ── chooseMode ────────────────────────────────────────────────
+// Called when the user clicks a mode card.
+// Sends the chosen mode to the server (stored in session), then redirects.
+
+async function chooseMode(mode) {
+  // mode is either "buyer" or "seller" — passed from the onclick attribute
+
+  await fetch("/set-mode", {
+    method: "POST",                                  // POST to update session data
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode })                   // Send the chosen mode
+  });
+  // Server stores the mode in req.session.user.mode
+
+  // Redirect to the correct starting page for each mode
+  window.location.href = mode === "seller" ? "seller-dashboard.html" : "index.html";
+  // Seller → goes straight to their dashboard
+  // Buyer → goes to the marketplace
+}
+
+// ── logout ────────────────────────────────────────────────────
+async function logout() {
+  await fetch("/logout", { method: "POST" }); // Destroy session on server
+  window.location.href = "landing.html";       // Return to landing page
+}
+</script>
+</body>
+</html>

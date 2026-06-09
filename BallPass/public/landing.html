@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BallPass – Trusted Football Ticket Exchange</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Landing page specific styles ── */
+
+    * { scroll-behavior: smooth; }
+    /* smooth makes anchor links (#how, #trust) scroll smoothly instead of jumping */
+
+    .hero-section {
+      background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%); /* Blue diagonal gradient */
+      color: white;
+      padding: 80px 20px;
+      text-align: center;
+      position: relative; /* Required for ::before pseudo-element positioning */
+      overflow: hidden;   /* Clips the decorative ball emoji so it doesn't overflow */
+    }
+    .hero-section::before {
+      /* Large decorative football emoji in the background */
+      content: "⚽";
+      position: absolute; /* Taken out of normal document flow */
+      font-size: 20rem;   /* Massive size for decorative effect */
+      opacity: .05;       /* Very faint — purely decorative */
+      top: -60px; right: -60px; /* Positioned in the top-right corner, partially off-screen */
+      line-height: 1;
+    }
+    .hero-section h1 { font-size: 3rem; font-weight: 800; margin-bottom: 16px; line-height: 1.2; }
+    .hero-section p  { font-size: 1.2rem; opacity: .9; max-width: 580px; margin: 0 auto 32px; }
+
+    .hero-btns { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    /* flex-wrap: wrap means buttons stack vertically on small screens */
+
+    .btn-hero-primary {
+      background: white; color: var(--blue);
+      padding: 14px 32px; border-radius: 30px; /* Pill shape */
+      font-weight: 700; font-size: 1rem;
+      text-decoration: none; border: none; cursor: pointer;
+      transition: transform .2s, box-shadow .2s; /* Animate hover effects */
+    }
+    .btn-hero-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    /* translateY(-2px) moves the button up 2px — creates a "lift" effect on hover */
+
+    .btn-hero-outline {
+      background: transparent; color: white;
+      padding: 14px 32px; border-radius: 30px;
+      font-weight: 700; font-size: 1rem;
+      text-decoration: none;
+      border: 2px solid rgba(255,255,255,.6); /* Semi-transparent white border */
+      transition: border-color .2s, background .2s;
+    }
+    .btn-hero-outline:hover { border-color: white; background: rgba(255,255,255,.1); }
+
+    /* Live stats strip below the hero */
+    .live-stats { background: white; padding: 32px 20px; border-bottom: 1px solid var(--gray-200); }
+    .live-stats .inner { max-width: 900px; margin: 0 auto; display: flex; gap: 0; text-align: center; }
+    .live-stat { flex: 1; padding: 16px; border-right: 1px solid var(--gray-200); }
+    .live-stat:last-child { border-right: none; } /* No border on the last stat */
+    .live-stat .num { font-size: 2.2rem; font-weight: 800; color: var(--blue); }
+    .live-stat .lbl { font-size: .85rem; color: var(--gray-600); margin-top: 4px; }
+
+    /* How it works section */
+    .how-section { padding: 60px 20px; background: var(--gray-50); }
+    .how-section h2, .trust-section h2 { text-align: center; font-size: 1.8rem; font-weight: 700; margin-bottom: 8px; }
+    .how-section .sub, .trust-section .sub { text-align: center; color: var(--gray-600); margin-bottom: 40px; }
+
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; max-width: 900px; margin: 0 auto; }
+    /* auto-fit + minmax: makes columns automatically fit — 4 on wide screens, fewer on narrow */
+
+    .step-card { background: white; border-radius: var(--radius); padding: 28px 24px; text-align: center;
+                 border: 1px solid var(--gray-200); box-shadow: var(--shadow-sm); }
+    .step-card .step-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .step-card .step-num  { font-size: .75rem; font-weight: 700; color: var(--blue); letter-spacing: 1px; margin-bottom: 6px; }
+    .step-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+    .step-card p  { font-size: .85rem; color: var(--gray-600); line-height: 1.6; }
+
+    /* Trust and safety section */
+    .trust-section { padding: 60px 20px; background: white; }
+    .trust-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; max-width: 900px; margin: 0 auto; }
+    .trust-item { display: flex; gap: 14px; align-items: flex-start; padding: 16px; border-radius: var(--radius); background: var(--gray-50); }
+    .trust-item .icon { font-size: 1.8rem; flex-shrink: 0; } /* flex-shrink:0 prevents icon from squishing */
+    .trust-item h4 { font-weight: 700; font-size: .9rem; margin-bottom: 4px; }
+    .trust-item p  { font-size: .82rem; color: var(--gray-600); line-height: 1.5; }
+
+    /* Call to action section at the bottom */
+    .cta-section { background: linear-gradient(135deg, #1a73e8, #0d47a1); color: white; padding: 60px 20px; text-align: center; }
+    .cta-section h2 { font-size: 2rem; font-weight: 800; margin-bottom: 12px; }
+    .cta-section p  { opacity: .9; margin-bottom: 28px; font-size: 1rem; }
+
+    footer { background: var(--gray-800); color: var(--gray-400); text-align: center; padding: 24px; font-size: .85rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── NAVBAR ─────────────────────────────────────────────────
+     href="#how" and href="#trust" link to sections on this same page
+     using the <section id="how"> and <section id="trust"> anchors below -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks">
+    <!-- Default nav for logged-out users — JavaScript updates this if logged in -->
+    <a href="#how">How it works</a>
+    <a href="#trust">Trust &amp; Safety</a>
+    <!-- &amp; is the HTML entity for & — required in HTML attributes -->
+    <a href="index.html">Marketplace</a>
+    <a href="login.html">Login</a>
+    <a href="register.html" class="btn-nav">Get Started</a>
+  </div>
+</nav>
+
+<!-- ── HERO SECTION ───────────────────────────────────────────
+     The main banner at the top of the page -->
+<section class="hero-section">
+  <h1>Football Tickets.<br>Bought &amp; Sold Safely.</h1>
+  <!-- <br> inserts a line break inside the heading -->
+  <p>BallPass is Central Asia's trusted peer-to-peer football ticket exchange.
+     No fraud. No inflated prices. Just fans helping fans.</p>
+  <div class="hero-btns">
+    <a href="register.html" class="btn-hero-primary">🎟 Buy Tickets</a>
+    <a href="register.html" class="btn-hero-outline">💰 Sell My Tickets</a>
+    <!-- Both buttons go to register — user picks their role at choose-mode -->
+  </div>
+</section>
+
+<!-- ── LIVE STATS STRIP ───────────────────────────────────────
+     Four numbers pulled live from the database by JavaScript.
+     Initially shows "…" while loading. -->
+<section class="live-stats">
+  <div class="inner">
+    <div class="live-stat"><div class="num" id="ls_tickets">…</div><div class="lbl">Tickets Listed</div></div>
+    <div class="live-stat"><div class="num" id="ls_sold">…</div>   <div class="lbl">Tickets Sold</div></div>
+    <div class="live-stat"><div class="num" id="ls_users">…</div>  <div class="lbl">Registered Fans</div></div>
+    <div class="live-stat"><div class="num" id="ls_cities">…</div> <div class="lbl">Cities Covered</div></div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ───────────────────────────────────────────
+     id="how" makes this an anchor target — clicking "#how" in the navbar scrolls here -->
+<section class="how-section" id="how">
+  <h2>How BallPass Works</h2>
+  <p class="sub">Simple, secure, and transparent in just 4 steps.</p>
+  <div class="steps">
+
+    <div class="step-card">
+      <div class="step-icon">📝</div>
+      <div class="step-num">STEP 01</div>
+      <h3>Create Your Account</h3>
+      <p>Sign up as a Buyer or Seller. Your account is verified and secured with encrypted credentials.</p>
+    </div>
+
+    <div class="step-card">
+      <div class="step-icon">🔍</div>
+      <div class="step-num">STEP 02</div>
+      <h3>Browse or List</h3>
+      <p>Buyers browse verified listings by match, city, or price. Sellers list their ticket with seat details in seconds.</p>
+    </div>
+
+    <div class="step-card">
+      <div class="step-icon">🏟</div>
+      <div class="step-num">STEP 03</div>
+      <h3>Select Your Seat</h3>
+      <p>Choose your exact seat on the interactive stadium map, preview your view in 3D, then confirm your purchase.</p>
+    </div>
+
+    <div class="step-card">
+      <div class="step-icon">✅</div>
+      <div class="step-num">STEP 04</div>
+      <h3>Enjoy the Match</h3>
+      <p>Your purchase is recorded and confirmed. Print your ticket and show it at the gate.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── TRUST AND SAFETY ───────────────────────────────────────
+     id="trust" is the anchor target for the navbar link -->
+<section class="trust-section" id="trust">
+  <h2>Built for Trust</h2>
+  <p class="sub">Every feature is designed to protect buyers and sellers.</p>
+  <div class="trust-grid">
+
+    <div class="trust-item">
+      <div class="icon">🔐</div>
+      <div>
+        <h4>Encrypted Passwords</h4>
+        <p>All passwords are hashed with bcrypt — never stored as plain text.</p>
+      </div>
+    </div>
+
+    <div class="trust-item">
+      <div class="icon">✔</div>
+      <div>
+        <h4>Verified Accounts</h4>
+        <p>Users must verify via a 6-digit code before buying or selling. No anonymous transactions.</p>
+      </div>
+    </div>
+
+    <div class="trust-item">
+      <div class="icon">💺</div>
+      <div>
+        <h4>Seat-Level Transparency</h4>
+        <p>Every listing shows the exact section and seat number. No vague descriptions.</p>
+      </div>
+    </div>
+
+    <div class="trust-item">
+      <div class="icon">🧾</div>
+      <div>
+        <h4>Transaction Records</h4>
+        <p>Every purchase is permanently recorded in the database with a unique booking reference.</p>
+      </div>
+    </div>
+
+    <div class="trust-item">
+      <div class="icon">🖨</div>
+      <div>
+        <h4>Printable Tickets</h4>
+        <p>Buyers receive a printable ticket with booking reference immediately after purchase.</p>
+      </div>
+    </div>
+
+    <div class="trust-item">
+      <div class="icon">📊</div>
+      <div>
+        <h4>Price Transparency</h4>
+        <p>Market analytics show real average prices so buyers can spot unfair listings.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── CALL TO ACTION ─────────────────────────────────────────
+     Bottom banner encouraging sign-up -->
+<section class="cta-section">
+  <h2>Ready to get started?</h2>
+  <p>Join football fans buying and selling tickets safely on BallPass.</p>
+  <div class="hero-btns">
+    <a href="register.html" class="btn-hero-primary">Create Free Account</a>
+    <a href="index.html"    class="btn-hero-outline">Browse Tickets</a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  © 2026 BallPass · Secure Football Ticket Exchange · Built for Central Asian football fans
+</footer>
+
+<script>
+// ── PAGE INITIALISATION ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // Step 1: Check if user is already logged in and update the navbar
+  const me = (await fetch("/me").then(r => r.json())).user;
+  // fetch("/me") sends the request, .then(r => r.json()) parses the response
+  // The whole thing returns { user: {...} } or { user: null }
+  // We immediately extract .user from it
+
+  if (me) {
+    // User is logged in — show personalised nav with dashboard link
+    const dest = me.mode === "seller" ? "seller-dashboard.html" : "buyer-dashboard.html";
+    // Which dashboard to link to depends on their current mode
+
+    document.getElementById("navLinks").innerHTML = `
+      <a href="#how">How it works</a>
+      <a href="index.html">Marketplace</a>
+      <a href="${dest}">Dashboard</a>
+      <span class="nav-user">👋 ${me.name}</span>
+      <button class="btn-nav" onclick="fetch('/logout',{method:'POST'}).then(()=>location.reload())">Logout</button>`;
+    // location.reload() reloads the current page after logout — nav will revert to logged-out state
+  }
+
+  // Step 2: Load live statistics from the database
+  try {
+    const stats = await fetch("/api/stats").then(r => r.json());
+    // GET /api/stats returns summary numbers and breakdown arrays
+
+    document.getElementById("ls_tickets").textContent = stats.summary.totalTickets;
+    document.getElementById("ls_sold").textContent    = stats.summary.totalSold;
+    document.getElementById("ls_users").textContent   = stats.summary.totalUsers;
+    document.getElementById("ls_cities").textContent  = stats.byLocation.length;
+    // stats.byLocation is an array of cities — .length gives the count of unique cities
+  } catch {
+    // If stats fail to load (e.g. server offline), show dashes
+    ["ls_tickets","ls_sold","ls_users","ls_cities"].forEach(id =>
+      document.getElementById(id).textContent = "—"
+    );
+    // .forEach() iterates the array and sets each element to "—"
+  }
+});
+</script>
+</body>
+</html>

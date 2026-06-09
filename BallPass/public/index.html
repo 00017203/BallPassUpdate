@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<!-- DOCTYPE tells the browser this is a modern HTML5 document -->
+<html lang="en">
+<!-- lang="en" tells browsers and screen readers the page is in English -->
+<head>
+  <!-- The <head> section contains metadata — information about the page that isn't displayed directly -->
+  <meta charset="UTF-8" />
+  <!-- charset UTF-8 supports all characters including accented letters and symbols -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- viewport meta tag makes the page scale correctly on mobile phones -->
+  <title>BallPass – Football Ticket Exchange</title>
+  <!-- The text shown in the browser tab -->
+  <link rel="stylesheet" href="style.css" />
+  <!-- Loads our shared CSS stylesheet which styles all pages consistently -->
+</head>
+<body>
+
+<!-- ── NAVBAR ──────────────────────────────────────────────────
+     The navigation bar shown at the top of every page.
+     id="navLinks" is targeted by JavaScript to swap out the links
+     depending on whether the user is logged in or not. -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <!-- The brand/logo on the left side of the navbar -->
+  <div class="nav-links" id="navLinks">
+    <!-- Default nav shown to logged-out users — JavaScript replaces this on page load -->
+    <a href="index.html">Marketplace</a>
+    <a href="analytics.html">Analytics</a>
+    <a href="login.html">Login</a>
+    <a href="register.html" class="btn-nav">Register</a>
+  </div>
+</nav>
+
+<!-- ── HERO SECTION ────────────────────────────────────────────
+     The heading and subtitle shown at the top of the marketplace -->
+<div class="page-hero">
+  <h1>Football Ticket Exchange</h1>
+  <p>Buy and sell verified football tickets safely – trusted by fans across Central Asia and beyond.</p>
+</div>
+
+<!-- ── MAIN CONTENT WRAPPER ────────────────────────────────────
+     page-wrapper is a CSS class that centres content and adds padding -->
+<div class="page-wrapper">
+
+  <!-- ── SELL TICKET FORM ──────────────────────────────────────
+       Hidden by default (display:none). JavaScript shows it only
+       when the logged-in user is in seller mode. -->
+  <div id="sellSection" style="display:none;">
+    <div class="section-title">📋 List a Ticket for Sale</div>
+    <div class="card" style="max-width:680px; margin-bottom:28px;">
+
+      <!-- Two-column grid layout for the form fields -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+
+        <!-- Match name field — required (*) -->
+        <div class="form-group">
+          <label>Match Name *</label>
+          <input type="text" id="s_match" placeholder="e.g. Arsenal vs Chelsea" />
+          <!-- field-error div is hidden by default — JavaScript shows it when validation fails -->
+          <div class="field-error" id="err_match">Please enter a match name (min 5 chars).</div>
+        </div>
+
+        <!-- Price field — type="number" shows a numeric keyboard on mobile and rejects text -->
+        <div class="form-group">
+          <label>Price (USD) *</label>
+          <input type="number" id="s_price" placeholder="e.g. 120" min="1" />
+          <!-- min="1" sets the HTML minimum but server-side validation also checks this -->
+          <div class="field-error" id="err_price">Price must be a positive number.</div>
+        </div>
+
+        <!-- Location field — required -->
+        <div class="form-group">
+          <label>City / Location *</label>
+          <input type="text" id="s_location" placeholder="e.g. London" />
+          <div class="field-error" id="err_location">Please enter a location.</div>
+        </div>
+
+        <!-- Stadium field — optional -->
+        <div class="form-group">
+          <label>Stadium</label>
+          <input type="text" id="s_stadium" placeholder="e.g. Emirates Stadium" />
+        </div>
+
+        <!-- Date field — type="date" shows a date picker in the browser -->
+        <div class="form-group">
+          <label>Match Date</label>
+          <input type="date" id="s_date" />
+          <!-- Default value is set by JavaScript to 7 days from today -->
+        </div>
+
+        <!-- Section dropdown — <select> creates a dropdown menu -->
+        <div class="form-group">
+          <label>Section</label>
+          <select id="s_section">
+            <!-- Each <option> has a value (sent to server) and display text (shown to user) -->
+            <option value="A">Section A</option>
+            <option value="B">Section B</option>
+            <option value="C">Section C</option>
+            <option value="D">Section D</option>
+            <option value="VIP">VIP</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Seat number field — outside the grid so it's full width -->
+      <div class="form-group" style="max-width:340px;">
+        <label>Seat Number</label>
+        <input type="text" id="s_seat" placeholder="e.g. B-14" />
+      </div>
+
+      <!-- onclick calls the submitTicket() JavaScript function when clicked -->
+      <button class="btn btn-success" onclick="submitTicket()">➕ List Ticket</button>
+
+      <!-- Empty div — JavaScript writes success/error messages into this -->
+      <div class="form-message" id="sellMsg"></div>
+    </div>
+  </div>
+
+  <!-- ── SEARCH AND FILTER TOOLBAR ────────────────────────────
+       oninput fires every time the user types — triggers instant filtering
+       onchange fires when a dropdown selection changes -->
+  <div class="toolbar">
+    <input type="text" id="searchInput"
+           placeholder="🔍  Search by match or city…"
+           oninput="filterTickets()" />
+    <!-- oninput="filterTickets()" calls filterTickets() on every keystroke for live search -->
+
+    <input type="number" id="maxPrice"
+           placeholder="Max price ($)" min="0"
+           oninput="filterTickets()"
+           style="max-width:160px;" />
+    <!-- Filters out tickets above this price as the user types -->
+
+    <select id="sortBy" onchange="filterTickets()"
+            style="padding:9px 14px; border:1.5px solid var(--gray-200); border-radius:8px; font-size:.9rem; outline:none;">
+      <option value="newest">Newest first</option>
+      <option value="price_asc">Price ↑</option>  <!-- Ascending = low to high -->
+      <option value="price_desc">Price ↓</option> <!-- Descending = high to low -->
+    </select>
+  </div>
+
+  <!-- ── TICKET GRID CONTAINER ─────────────────────────────────
+       JavaScript fills this div with ticket cards after fetching from the server.
+       Initially shows a loading message. -->
+  <div id="ticketsContainer">
+    <div class="empty-state"><div class="icon">⏳</div><p>Loading tickets…</p></div>
+  </div>
+
+</div><!-- end .page-wrapper -->
+
+<!-- ── TOAST NOTIFICATION ────────────────────────────────────
+     A small popup message shown briefly at the bottom of the screen.
+     JavaScript controls its visibility by adding/removing the "show" class. -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── PAGE-LEVEL STATE VARIABLES ────────────────────────────────
+// These variables are accessible by all functions on this page.
+
+let allTickets = []; // Stores the full list of tickets fetched from the server — used for client-side filtering
+let currentUser = null; // Stores the logged-in user object — null if not logged in
+
+// ── PAGE INITIALISATION ───────────────────────────────────────
+// DOMContentLoaded fires after the HTML is fully parsed but before images/styles finish loading.
+// async () => means the function is asynchronous — it can use 'await' to pause for server responses.
+
+document.addEventListener("DOMContentLoaded", async () => {
+  await checkSession();  // First: check if the user is logged in and update the navbar
+  await loadTickets();   // Second: fetch all available tickets from the server and display them
+
+  // Set the default date in the listing form to 7 days from today
+  const d = new Date();         // Creates a Date object representing right now
+  d.setDate(d.getDate()+7);     // Adds 7 days to today's date
+  const dateEl = document.getElementById("s_date"); // Gets the date input element
+  if (dateEl) dateEl.value = d.toISOString().split("T")[0];
+  // .toISOString() returns "2026-05-19T10:30:00.000Z"
+  // .split("T")[0] takes only the date part: "2026-05-19"
+  // This is the format HTML date inputs require
+});
+
+// ── checkSession ──────────────────────────────────────────────
+// Asks the server "who is currently logged in?" and updates the UI accordingly.
+
+async function checkSession() {
+  const res  = await fetch("/me");   // Sends GET /me to the server
+  const data = await res.json();     // Parses the JSON response e.g. { user: {...} } or { user: null }
+  currentUser = data.user;           // Stores the user globally — null if not logged in
+  renderNav();                       // Rebuilds the navbar based on login state
+
+  // Show or hide the "List a Ticket" form based on mode
+  const sell = document.getElementById("sellSection"); // Gets the sell form container
+  if (currentUser && currentUser.mode === "seller") {
+    sell.style.display = "block"; // Shows the form if the user is in seller mode
+  } else {
+    sell.style.display = "none";  // Hides it for buyers or logged-out users
+  }
+}
+
+// ── renderNav ─────────────────────────────────────────────────
+// Rewrites the navbar HTML depending on whether the user is logged in
+// and which mode (buyer/seller) they are in.
+
+function renderNav() {
+  const nav = document.getElementById("navLinks"); // Gets the nav container div
+
+  if (currentUser) {
+    // User IS logged in — show personalised navigation
+    const isSeller   = currentUser.mode === "seller";            // true if in seller mode
+    const dashLink   = isSeller ? "seller-dashboard.html" : "buyer-dashboard.html"; // Which dashboard to link to
+    const dashLabel  = isSeller ? "🏷 Dashboard" : "🎟 My Tickets"; // Label changes by mode
+    const switchLabel = isSeller ? "Switch to Buyer" : "Switch to Seller"; // Button label is opposite of current mode
+
+    // Template literal (backtick string) builds the HTML for the logged-in navbar
+    nav.innerHTML = `
+      <a href="index.html">Marketplace</a>
+      <a href="${dashLink}">${dashLabel}</a>
+      <span class="nav-user">👋 ${currentUser.name}</span>
+      <button class="btn-nav" style="background:rgba(255,255,255,.2); margin-right:4px;" onclick="switchMode()">${switchLabel}</button>
+      <button class="btn-nav" onclick="logout()">Logout</button>`;
+    // innerHTML replaces all the nav content at once with the new HTML string
+  } else {
+    // User is NOT logged in — show generic navigation
+    nav.innerHTML = `
+      <a href="index.html">Marketplace</a>
+      <a href="analytics.html">Analytics</a>
+      <a href="login.html">Login</a>
+      <a href="register.html" class="btn-nav">Register</a>`;
+  }
+}
+
+// ── switchMode ────────────────────────────────────────────────
+// Toggles between buyer and seller mode by calling the server,
+// then redirects to the appropriate page.
+
+async function switchMode() {
+  const newMode = currentUser.mode === "seller" ? "buyer" : "seller";
+  // Ternary: if currently seller → switch to buyer, otherwise → switch to seller
+
+  await fetch("/set-mode", {
+    method: "POST",                                  // POST request to change mode on the server
+    headers: { "Content-Type": "application/json" }, // Tells server we're sending JSON
+    body: JSON.stringify({ mode: newMode })          // Converts the JS object to a JSON string for the request body
+  });
+
+  if (newMode === "seller") {
+    window.location.href = "seller-dashboard.html"; // Redirect to seller dashboard after switching to seller
+  } else {
+    window.location.reload(); // Reload this page after switching to buyer — the sell form will disappear
+  }
+}
+
+// ── logout ────────────────────────────────────────────────────
+// Sends a logout request to the server (destroys the session),
+// then redirects to the landing page.
+
+async function logout() {
+  await fetch("/logout", { method: "POST" }); // POST /logout — server destroys the session
+  window.location.href = "landing.html";      // Redirect to landing page
+}
+
+// ── loadTickets ───────────────────────────────────────────────
+// Fetches all available tickets from the server and displays them.
+
+async function loadTickets() {
+  try {
+    const res = await fetch("/tickets");  // GET /tickets — server returns array of available tickets
+    allTickets = await res.json();        // Parses the JSON array and stores it globally for filtering
+    renderTickets(allTickets);            // Renders all tickets into the page
+  } catch {
+    // If the fetch fails (e.g. server is offline), show an error message instead
+    document.getElementById("ticketsContainer").innerHTML =
+      `<div class="empty-state"><div class="icon">⚠️</div><p>Could not load tickets.</p></div>`;
+  }
+}
+
+// ── renderTickets ─────────────────────────────────────────────
+// Takes an array of ticket objects and renders them as HTML cards in the grid.
+
+function renderTickets(tickets) {
+  const container = document.getElementById("ticketsContainer"); // Gets the grid container
+
+  if (!tickets.length) {
+    // If the array is empty, show a "no tickets" message instead of an empty grid
+    container.innerHTML = `<div class="empty-state"><div class="icon">🎫</div><p>No tickets found.</p></div>`;
+    return; // Stop here — don't try to render an empty grid
+  }
+
+  // tickets.map(ticketHTML) converts each ticket object into an HTML string
+  // .join("") combines the array of strings into one big HTML string (no separator between cards)
+  // The whole thing is wrapped in a div.tickets-grid for CSS grid layout
+  container.innerHTML = `<div class="tickets-grid">${tickets.map(ticketHTML).join("")}</div>`;
+}
+
+// ── ticketHTML ────────────────────────────────────────────────
+// Builds the HTML string for a single ticket card.
+// Returns different action buttons depending on the user's role and ownership.
+
+function ticketHTML(t) {
+  // t is a single ticket object e.g. { id:1, match:"Arsenal vs Chelsea", price:120, ... }
+
+  const isOwn    = currentUser && t.seller_id === currentUser.id;
+  // true if the logged-in user is the seller of this specific ticket
+  // currentUser && ensures we don't error if currentUser is null
+
+  const isSeller = currentUser && currentUser.mode === "seller";
+  // true if the user is logged in AND in seller mode
+
+  const date = t.match_date
+    ? new Date(t.match_date).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})
+    : "TBC";
+  // Formats the date as "15 Jun 2026" (British format)
+  // If no date is stored, shows "TBC" (To Be Confirmed)
+
+  // Decide which action button to show based on context
+  let actions = ""; // Start with empty string — will be filled by the if/else below
+
+  if (isOwn) {
+    // This is the seller's own listing — show a Remove button
+    actions = `<button class="btn btn-danger btn-sm" onclick="deleteTicket(${t.id})">🗑 Remove</button>`;
+    // ${t.id} embeds the ticket's ID into the onclick handler so we know which ticket to delete
+  } else if (!currentUser) {
+    // Nobody is logged in — prompt them to log in before buying
+    actions = `<a href="login.html" class="btn btn-primary btn-sm">Login to Buy</a>`;
+  } else if (!isSeller) {
+    // Logged in as a buyer — show the buy button
+    actions = `<button class="btn btn-primary btn-sm" onclick="goSelectSeat(${t.id})">🎟 Select Seat & Buy</button>`;
+  } else {
+    // Logged in as a seller looking at someone else's ticket — read only
+    actions = `<span style="font-size:.8rem; color:var(--gray-400);">Switch to Buyer mode to purchase</span>`;
+  }
+
+  // Returns the complete HTML string for one ticket card
+  // escHtml() is called on all user-provided text to prevent XSS attacks (see below)
+  return `
+    <div class="ticket-card">
+      <div class="match-title">⚽ ${escHtml(t.match)}</div>
+      <div class="ticket-meta">
+        <span class="tag price">$${t.price}</span>
+        <span class="tag">📍 ${escHtml(t.location)}</span>
+        <span class="tag">🗓 ${date}</span>
+        <span class="tag seat">💺 ${escHtml(t.seat_number||'-')}</span>
+        <!-- t.seat_number||'-' shows '-' if seat_number is empty or null -->
+      </div>
+      <div style="font-size:.8rem; color:var(--gray-400); margin-top:2px;">
+        ${t.stadium?`🏟 ${escHtml(t.stadium)}`:''}${t.stadium?' &nbsp;|&nbsp; ':''} Seller: ${escHtml(t.seller_name||'User')}
+        <!-- Ternary: only show the stadium and separator if a stadium name exists -->
+      </div>
+      <div class="card-actions">${actions}</div>
+    </div>`;
+}
+
+// ── filterTickets ─────────────────────────────────────────────
+// Runs every time the user types in the search box, changes the price,
+// or changes the sort order. Filters and sorts allTickets then re-renders.
+
+function filterTickets() {
+  const q    = document.getElementById("searchInput").value.toLowerCase();
+  // Gets search text and converts to lowercase for case-insensitive matching
+
+  const max  = parseFloat(document.getElementById("maxPrice").value) || Infinity;
+  // parseFloat converts the string to a decimal number
+  // || Infinity means if the field is empty (NaN), use Infinity so all prices pass
+
+  const sort = document.getElementById("sortBy").value;
+  // Gets the selected sort option: "newest", "price_asc", or "price_desc"
+
+  // .filter() creates a new array containing only tickets that match ALL conditions
+  let filtered = allTickets.filter(t =>
+    (t.match.toLowerCase().includes(q) || t.location.toLowerCase().includes(q))
+    // .includes(q) returns true if the match name OR location contains the search text
+    && t.price <= max // AND the price is within the maximum
+  );
+
+  // Apply sorting — .sort() mutates the array in place
+  if (sort === "price_asc")  filtered.sort((a,b) => a.price - b.price);
+  // Ascending: if a.price - b.price is negative, a comes first (lower price first)
+  if (sort === "price_desc") filtered.sort((a,b) => b.price - a.price);
+  // Descending: if b.price - a.price is negative, b comes first (higher price first)
+
+  renderTickets(filtered); // Re-renders the grid with the filtered/sorted results
+}
+
+// ── validateField ─────────────────────────────────────────────
+// A reusable validation helper. Checks one field and shows/hides its error message.
+// id       — the ID of the input element to check
+// errId    — the ID of the error message div to show/hide
+// condition — a function that takes the field's value and returns true (valid) or false (invalid)
+
+function validateField(id, errId, condition) {
+  const el  = document.getElementById(id);     // Gets the input element
+  const err = document.getElementById(errId);  // Gets the error message div
+  const ok  = condition(el.value);             // Runs the condition — true = valid, false = invalid
+
+  el.classList.toggle("error", !ok);  // Adds "error" CSS class if invalid (red border), removes if valid
+  el.classList.toggle("valid", ok);   // Adds "valid" CSS class if valid (green border), removes if invalid
+  err.classList.toggle("show", !ok);  // Shows the error message if invalid, hides if valid
+
+  return ok; // Returns true/false so the caller can check if all fields passed
+}
+
+// ── submitTicket ──────────────────────────────────────────────
+// Handles the "List Ticket" button click.
+// Validates all required fields, then sends the ticket data to the server.
+
+async function submitTicket() {
+  // Run validation on all three required fields first
+  // Each validateField call returns true/false
+  const v1 = validateField("s_match",    "err_match",    v => v.trim().length >= 5);  // Match name: at least 5 chars
+  const v2 = validateField("s_price",    "err_price",    v => !isNaN(v) && Number(v) > 0); // Price: a positive number
+  const v3 = validateField("s_location", "err_location", v => v.trim().length >= 2);  // Location: at least 2 chars
+
+  if (!v1 || !v2 || !v3) return;
+  // If ANY field is invalid, stop here — don't send the request
+  // The error messages are already shown by validateField()
+
+  // All valid — send the ticket data to the server
+  const res = await fetch("/tickets", {
+    method: "POST",                                   // POST request to create a new resource
+    headers: { "Content-Type": "application/json" },  // Required header when sending JSON
+    body: JSON.stringify({
+      // Collect all field values and build the request body object
+      match:       document.getElementById("s_match").value.trim(),    // .trim() removes whitespace
+      price:       document.getElementById("s_price").value,
+      location:    document.getElementById("s_location").value.trim(),
+      stadium:     document.getElementById("s_stadium").value.trim(),
+      match_date:  document.getElementById("s_date").value,
+      section:     document.getElementById("s_section").value,
+      seat_number: document.getElementById("s_seat").value.trim(),
+    })
+  });
+
+  const data = await res.json();                       // Parse the server's JSON response
+  const msg  = document.getElementById("sellMsg");    // Get the status message div
+
+  if (res.ok) {
+    // res.ok is true for 2xx status codes (success)
+    msg.className   = "form-message success";
+    msg.textContent = "✅ Ticket listed successfully!"; // Show success message
+    // Clear all form fields after successful submission
+    ["s_match","s_price","s_location","s_stadium","s_seat"].forEach(id =>
+      document.getElementById(id).value = "" // Reset each field to empty
+    );
+    await loadTickets();           // Refresh the ticket grid so the new listing appears immediately
+    showToast("Ticket listed!", "success"); // Show a brief popup notification
+  } else {
+    // Server returned an error (e.g. 403 if not verified, 400 if invalid data)
+    msg.className   = "form-message error";
+    msg.textContent = "❌ " + data.message; // Show the error message from the server
+  }
+}
+
+// ── goSelectSeat ──────────────────────────────────────────────
+// Navigates to the seat selector page for a specific ticket.
+// The ticket ID is passed as a URL query parameter.
+
+function goSelectSeat(id) {
+  window.location.href = `seat-selector.html?id=${id}`;
+  // e.g. seat-selector.html?id=3
+  // The seat selector page reads the 'id' parameter using URLSearchParams
+}
+
+// ── deleteTicket ──────────────────────────────────────────────
+// Asks the user to confirm, then sends a DELETE request to remove the listing.
+
+async function deleteTicket(id) {
+  if (!confirm("Remove this listing?")) return;
+  // confirm() shows a browser dialog — returns true if OK clicked, false if Cancel
+  // If the user clicks Cancel, we stop here
+
+  const res  = await fetch(`/tickets/${id}`, { method: "DELETE" }); // DELETE /tickets/3
+  const data = await res.json(); // Parse the response
+
+  if (res.ok) {
+    showToast("Removed.", "success"); // Brief popup notification
+    await loadTickets();              // Refresh the grid — the deleted ticket will no longer appear
+  } else {
+    showToast(data.message, "error"); // Show error if delete failed (e.g. not the owner)
+  }
+}
+
+// ── escHtml ───────────────────────────────────────────────────
+// Escapes special HTML characters in user-provided text.
+// This prevents XSS (Cross-Site Scripting) attacks where a malicious user
+// could inject HTML or JavaScript into the page by putting it in a ticket name.
+// e.g. a match name of "<script>alert('hacked')</script>" would be rendered as
+// safe text instead of executing as code.
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,  "&amp;")   // & → &amp;  (must be first to avoid double-escaping)
+    .replace(/</g,  "&lt;")    // < → &lt;   (prevents opening HTML tags)
+    .replace(/>/g,  "&gt;");   // > → &gt;   (prevents closing HTML tags)
+}
+
+// ── showToast ─────────────────────────────────────────────────
+// Shows a brief notification popup at the bottom-right of the screen.
+// Automatically hides after 3 seconds.
+
+function showToast(msg, type="") {
+  const t = document.getElementById("toast");  // Gets the toast div
+  t.textContent = msg;                          // Sets the message text
+  t.className = "toast show" + (type ? " " + type : "");
+  // "toast show" makes it visible (the "show" class adds opacity and slides it up)
+  // type adds an extra class like "success" (green) or "error" (red)
+
+  setTimeout(() => t.classList.remove("show"), 3000);
+  // After 3000ms (3 seconds), removes the "show" class which fades it back out
+  // setTimeout registers a callback to run after a delay — doesn't block the page
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js from CDN – no install needed -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks">
+    <a href="index.html">Home</a>
+    <a href="analytics.html">Analytics</a>
+  </div>
+</nav>
+
+<div class="page-hero">
+  <h1>📊 Platform Analytics</h1>
+  <p>Live data from the BallPass database — listings, sales, and price trends.</p>
+</div>
+
+<div class="page-wrapper">
+
+  <!-- ── Summary stats ── -->
+  <div class="stats-row" id="statsRow">
+    <div class="stat-card"><div class="stat-value" id="st_tickets">–</div><div class="stat-label">Total Listings</div></div>
+    <div class="stat-card"><div class="stat-value" id="st_sold">–</div><div class="stat-label">Tickets Sold</div></div>
+    <div class="stat-card"><div class="stat-value" id="st_users">–</div><div class="stat-label">Registered Users</div></div>
+    <div class="stat-card"><div class="stat-value" id="st_revenue">–</div><div class="stat-label">Total Revenue ($)</div></div>
+  </div>
+
+  <!-- ── Charts ── -->
+  <div class="charts-grid">
+
+    <div class="chart-card">
+      <h3>Listings by City</h3>
+      <canvas id="chartByLocation" height="220"></canvas>
+    </div>
+
+    <div class="chart-card">
+      <h3>Average Ticket Price by City</h3>
+      <canvas id="chartAvgPrice" height="220"></canvas>
+    </div>
+
+    <div class="chart-card">
+      <h3>Transactions – Last 7 Days</h3>
+      <canvas id="chartTxByDay" height="220"></canvas>
+    </div>
+
+    <div class="chart-card">
+      <h3>Price Range Distribution</h3>
+      <canvas id="chartPriceRange" height="220"></canvas>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+// ── Chart colour palette ──
+const PALETTE = ["#1a73e8","#e53935","#43a047","#fb8c00","#8e24aa","#00acc1"];
+
+// ── Load stats ──
+document.addEventListener("DOMContentLoaded", async () => {
+  // Nav
+  const meRes = await fetch("/me");
+  const me    = (await meRes.json()).user;
+  const nav   = document.getElementById("navLinks");
+  if (me) {
+    nav.innerHTML = `
+      <a href="index.html">Home</a>
+      <a href="analytics.html">Analytics</a>
+      <a href="profile.html">Profile</a>
+      <span class="nav-user">👋 ${me.name}</span>
+      <button class="btn-nav" onclick="logout()">Logout</button>`;
+  }
+
+  // Fetch analytics data
+  const res  = await fetch("/api/stats");
+  const data = await res.json();
+
+  // ── Summary ──
+  document.getElementById("st_tickets").textContent = data.summary.totalTickets;
+  document.getElementById("st_sold").textContent    = data.summary.totalSold;
+  document.getElementById("st_users").textContent   = data.summary.totalUsers;
+  document.getElementById("st_revenue").textContent = `$${parseFloat(data.summary.totalRevenue).toFixed(0)}`;
+
+  // ── Chart 1: Listings by location (bar) ──
+  new Chart(document.getElementById("chartByLocation"), {
+    type: "bar",
+    data: {
+      labels:   data.byLocation.map(r => r.location),
+      datasets: [{
+        label: "Available Listings",
+        data:  data.byLocation.map(r => r.count),
+        backgroundColor: PALETTE,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales:  { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+    }
+  });
+
+  // ── Chart 2: Avg price by location (horizontal bar) ──
+  new Chart(document.getElementById("chartAvgPrice"), {
+    type: "bar",
+    data: {
+      labels:   data.avgPriceByLocation.map(r => r.location),
+      datasets: [{
+        label: "Avg Price ($)",
+        data:  data.avgPriceByLocation.map(r => r.avg_price),
+        backgroundColor: "#1a73e8",
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales:  { x: { beginAtZero: true } }
+    }
+  });
+
+  // ── Chart 3: Transactions per day (line) ──
+  const dayLabels = data.txByDay.map(r => r.day);
+  const dayCounts = data.txByDay.map(r => r.count);
+
+  // If no transaction data yet, show placeholder
+  const hasData = dayCounts.length > 0;
+  new Chart(document.getElementById("chartTxByDay"), {
+    type: "line",
+    data: {
+      labels:   hasData ? dayLabels : ["No transactions yet"],
+      datasets: [{
+        label: "Transactions",
+        data:  hasData ? dayCounts  : [0],
+        borderColor: "#43a047",
+        backgroundColor: "rgba(67,160,71,.12)",
+        fill: true,
+        tension: 0.4,
+        pointRadius: 5,
+        pointBackgroundColor: "#43a047",
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales:  { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+    }
+  });
+
+  // ── Chart 4: Price range doughnut ──
+  new Chart(document.getElementById("chartPriceRange"), {
+    type: "doughnut",
+    data: {
+      labels:   data.priceRanges.map(r => r.range),
+      datasets: [{
+        data:            data.priceRanges.map(r => r.count),
+        backgroundColor: PALETTE,
+        borderWidth: 2,
+        borderColor: "#fff",
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { position: "bottom", labels: { font: { size: 12 } } }
+      }
+    }
+  });
+});
+
+async function logout() {
+  await fetch("/logout", { method: "POST" });
+  window.location.href = "index.html";
+}
+</script>
+</body>
+</html>

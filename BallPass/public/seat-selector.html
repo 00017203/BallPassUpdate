@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Select Seat - BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    #viewCanvas {
+      width:100%; height:400px; border-radius:var(--radius);
+      background:linear-gradient(180deg,#0a0a1a,#1a1a3a);
+      display:block;
+    }
+    .view-panel { display:none; margin-top:20px; }
+    .view-panel.show { display:block; }
+    .view-info {
+      background:linear-gradient(135deg,#1a73e8,#0d47a1);
+      color:white; border-radius:var(--radius); padding:16px 20px;
+      margin-bottom:12px; display:flex; gap:16px; align-items:center; flex-wrap:wrap;
+    }
+    .view-info .seat-label { font-size:1.8rem; font-weight:800; }
+    .view-info .seat-desc  { font-size:.85rem; opacity:.85; }
+    .back-btn { background:rgba(255,255,255,.15); border:none; color:white;
+      padding:7px 16px; border-radius:20px; cursor:pointer; font-size:.85rem; font-weight:600; }
+    .back-btn:hover { background:rgba(255,255,255,.25); }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks">
+    <a href="index.html">← Back to Tickets</a>
+  </div>
+</nav>
+
+<div class="page-wrapper" style="max-width:900px;">
+
+  <!-- Ticket banner -->
+  <div class="card" id="ticketBanner" style="margin-bottom:20px;display:flex;gap:20px;flex-wrap:wrap;align-items:center;">
+    <div style="flex:1;min-width:200px;">
+      <div style="font-size:.8rem;color:var(--gray-400);margin-bottom:4px;">YOU ARE BUYING</div>
+      <div style="font-size:1.15rem;font-weight:700;" id="bannerMatch">Loading…</div>
+      <div class="ticket-meta" style="margin-top:8px;" id="bannerMeta"></div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:2rem;font-weight:700;color:var(--blue);" id="bannerPrice">—</div>
+      <div style="font-size:.8rem;color:var(--gray-400);">Listed price</div>
+    </div>
+  </div>
+
+  <!-- 2D Seat map -->
+  <div class="card" id="mapPanel">
+    <h2 style="font-size:1rem;font-weight:700;margin-bottom:4px;">🗺 Select Your Seat</h2>
+    <p style="font-size:.82rem;color:var(--gray-600);margin-bottom:16px;">
+      Click any <strong>available</strong> seat. After selecting, you can preview the <strong>3D view from your seat</strong> before buying.
+    </p>
+    <div class="stadium-wrap">
+      <svg id="stadiumSVG" viewBox="0 0 700 500" xmlns="http://www.w3.org/2000/svg"
+           style="max-width:700px;width:100%;font-family:sans-serif;">
+
+        <!-- Pitch -->
+        <rect x="190" y="155" width="320" height="190" rx="8" fill="#4caf50"/>
+        <rect x="202" y="167" width="296" height="166" rx="4" fill="none" stroke="white" stroke-width="2"/>
+        <circle cx="350" cy="250" r="28" fill="none" stroke="white" stroke-width="2"/>
+        <line x1="350" y1="167" x2="350" y2="333" stroke="white" stroke-width="2"/>
+        <rect x="202" y="207" width="46" height="86" fill="none" stroke="white" stroke-width="2"/>
+        <rect x="452" y="207" width="46" height="86" fill="none" stroke="white" stroke-width="2"/>
+        <circle cx="350" cy="250" r="3" fill="white"/>
+
+        <!-- Stand labels - one per side, clear and outside seats -->
+        <text x="350" y="22" text-anchor="middle" font-size="12" fill="#1565c0" font-weight="700" letter-spacing="1">SECTION A — NORTH STAND</text>
+        <text x="350" y="490" text-anchor="middle" font-size="12" fill="#1565c0" font-weight="700" letter-spacing="1">SECTION B — SOUTH STAND</text>
+        <text x="14" y="250" text-anchor="middle" font-size="12" fill="#1565c0" font-weight="700" letter-spacing="1" transform="rotate(-90,14,250)">SECTION D — WEST STAND</text>
+        <text x="686" y="250" text-anchor="middle" font-size="12" fill="#1565c0" font-weight="700" letter-spacing="1" transform="rotate(90,686,250)">SECTION C — EAST STAND</text>
+
+        <g id="seatGroup"></g>
+      </svg>
+    </div>
+    <div class="seat-legend">
+      <span><span class="legend-dot" style="background:#1a73e8;"></span>Available</span>
+      <span><span class="legend-dot" style="background:#f9a825;"></span>Selected</span>
+      <span><span class="legend-dot" style="background:#e53935;"></span>Listed seat</span>
+      <span><span class="legend-dot" style="background:#bdbdbd;"></span>Taken</span>
+    </div>
+  </div>
+
+  <!-- 3D View from seat panel (shown after selection) -->
+  <div class="view-panel" id="viewPanel">
+    <div class="view-info">
+      <div>
+        <div class="seat-label" id="viewSeatLabel">—</div>
+        <div class="seat-desc">Your view from this seat</div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:.85rem;opacity:.85;" id="viewSeatDesc">—</div>
+      </div>
+      <button class="back-btn" onclick="closeView()">← Change Seat</button>
+    </div>
+    <div class="card" style="padding:12px;">
+      <canvas id="viewCanvas"></canvas>
+      <div style="text-align:center;font-size:.78rem;color:var(--gray-400);margin-top:8px;">
+        🖱 Drag to look around from your seat
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm panel -->
+  <div class="card" id="confirmPanel" style="margin-top:20px;display:none;">
+    <h3 style="font-size:1rem;font-weight:700;margin-bottom:12px;">Confirm Purchase</h3>
+    <p style="font-size:.9rem;color:var(--gray-600);margin-bottom:16px;">
+      Purchasing seat <strong id="confirmSeat">—</strong> for
+      <strong id="confirmMatch">—</strong> at <strong id="confirmPrice">—</strong>.
+    </p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <button class="btn btn-success" onclick="confirmPurchase()" id="buyBtn">✅ Confirm Purchase</button>
+      <button class="btn btn-outline" onclick="clearSelection()">Cancel</button>
+    </div>
+    <div class="form-message" id="purchaseMsg"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ── State ──
+let ticketData  = null;
+let selectedSeat = null;
+const ROWS=5, COLS=12, GAP=3, SW=15, SH=12;
+// One section per side: A=North, B=South, C=East(right), D=West(left)
+// For East/West, seats are rendered vertically (rotated logic)
+const SECTIONS=[
+  {id:"A", x:190, y:32,  color:"#1a73e8", vertical:false},  // North
+  {id:"B", x:190, y:408, color:"#0d47a1", vertical:false},  // South
+  {id:"C", x:532, y:165, color:"#1565c0", vertical:true},   // East
+  {id:"D", x:30,  y:165, color:"#1976d2", vertical:true},   // West
+];
+
+// ── Init ──
+document.addEventListener("DOMContentLoaded", async () => {
+  const meData = await fetch("/me").then(r=>r.json());
+  if (meData.user) {
+    const s = meData.user.mode==="seller";
+    document.getElementById("navLinks").innerHTML=`
+      <a href="index.html">← Back to Tickets</a>
+      <button class="btn-nav" style="background:rgba(255,255,255,.2);margin-right:4px;" onclick="switchMode('${s?'buyer':'seller'}')">${s?'Switch to Buyer':'Switch to Seller'}</button>
+      <button class="btn-nav" onclick="fetch('/logout',{method:'POST'}).then(()=>location.href='landing.html')">Logout</button>`;
+  }
+  const id = new URLSearchParams(location.search).get("id");
+  if (!id) { window.location.href="index.html"; return; }
+  const res = await fetch(`/tickets/${id}`);
+  if (!res.ok) { window.location.href="index.html"; return; }
+  ticketData = await res.json();
+
+  const date = ticketData.match_date
+    ? new Date(ticketData.match_date).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}) : "TBC";
+  document.getElementById("bannerMatch").textContent = ticketData.match;
+  document.getElementById("bannerPrice").textContent = `$${ticketData.price}`;
+  document.getElementById("bannerMeta").innerHTML=`
+    <span class="tag">📍 ${esc(ticketData.location)}</span>
+    <span class="tag">🗓 ${date}</span>
+    <span class="tag seat">💺 ${esc(ticketData.seat_number||'-')}</span>`;
+  buildStadium();
+});
+
+// ── 2D Stadium map ──
+function buildStadium() {
+  const g = document.getElementById("seatGroup");
+  g.innerHTML="";
+  const takenSet=new Set();
+  for(let i=0;i<18;i++){
+    const sec=SECTIONS[Math.floor(Math.random()*SECTIONS.length)].id;
+    takenSet.add(`${sec}-R${Math.floor(Math.random()*ROWS)+1}C${Math.floor(Math.random()*COLS)+1}`);
+  }
+  const listedSeat=ticketData.seat_number||"";
+  SECTIONS.forEach(sec=>{
+    for(let r=0;r<ROWS;r++){
+      for(let col=0;col<COLS;col++){
+        const seatId=`${sec.id}-R${r+1}C${col+1}`;
+        const isListed=(seatId===listedSeat)||(sec.id===(ticketData.section||"A")&&r===0&&col===0&&!listedSeat);
+        const isTaken=takenSet.has(seatId)&&!isListed;
+
+        // For vertical sections (East/West), swap row/col axes
+        let cx, cy;
+        if(sec.vertical){
+          cx = sec.x + r*(SW+GAP);
+          cy = sec.y + col*(SH+GAP);
+        } else {
+          cx = sec.x + col*(SW+GAP);
+          cy = sec.y + r*(SH+GAP);
+        }
+
+        const grp=document.createElementNS("http://www.w3.org/2000/svg","g");
+        grp.setAttribute("class","seat"+(isTaken?" taken":""));
+        grp.dataset.seatId=seatId;
+        const rect=document.createElementNS("http://www.w3.org/2000/svg","rect");
+        rect.setAttribute("x",cx); rect.setAttribute("y",cy);
+        rect.setAttribute("width",sec.vertical?SH:SW);
+        rect.setAttribute("height",sec.vertical?SW:SH);
+        rect.setAttribute("rx","3");
+        rect.setAttribute("fill",isTaken?"#bdbdbd":isListed?"#e53935":sec.color);
+        rect.setAttribute("opacity",isTaken?"0.5":"0.85");
+        if(!isTaken){ grp.style.cursor="pointer"; grp.addEventListener("click",()=>selectSeat(seatId,grp,sec,r,col)); }
+        grp.appendChild(rect); g.appendChild(grp);
+      }
+    }
+  });
+}
+
+function selectSeat(seatId, el, sec, row, col) {
+  document.querySelectorAll(".seat.selected").forEach(s=>{
+    s.classList.remove("selected");
+    const sid=s.dataset.seatId.split("-")[0];
+    const f=SECTIONS.find(x=>x.id===sid);
+    if(f) s.querySelector("rect").setAttribute("fill",f.color);
+    s.querySelector("rect").setAttribute("opacity","0.85");
+  });
+  // Don't select taken seats
+  if(el.classList.contains("taken")) return;
+  el.classList.add("selected");
+  el.querySelector("rect").setAttribute("fill","#f9a825");
+  el.querySelector("rect").setAttribute("opacity","1");
+  selectedSeat=seatId;
+
+  // Update confirm panel
+  document.getElementById("confirmSeat").textContent  = seatId;
+  document.getElementById("confirmMatch").textContent  = ticketData.match;
+  document.getElementById("confirmPrice").textContent  = `$${ticketData.price}`;
+  document.getElementById("confirmPanel").style.display="block";
+  document.getElementById("purchaseMsg").className="form-message";
+
+  // Show 3D view from seat
+  showViewFromSeat(sec, row, col, seatId);
+}
+
+// ── 3D View from Seat ──────────────────────────────────
+let viewScene, viewCamera, viewRenderer, viewIsDragging=false, viewPrevMouse={x:0,y:0};
+let viewYaw=0, viewPitch=0;
+
+function showViewFromSeat(sec, row, col, seatId) {
+  const sectionNames={A:"North Stand",B:"North Stand",C:"South Stand",D:"South Stand"};
+  document.getElementById("viewSeatLabel").textContent = seatId;
+  document.getElementById("viewSeatDesc").textContent  =
+    `${sectionNames[sec.id]} · Row ${row+1} · Seat ${col+1} · ${row<2?'Front rows - excellent pitch-side view':'Higher rows - great panoramic view'}`;
+  document.getElementById("viewPanel").classList.add("show");
+  document.getElementById("viewPanel").scrollIntoView({behavior:"smooth",block:"center"});
+
+  // Position camera based on section and row
+  // Each section has a different angle around the pitch
+  // Camera sits AT seat level — row 0 = front row close to pitch, row 4 = back row higher up
+  // Height: front row ~1.5m, back row ~5m. Distance from pitch edge ~3m front, ~9m back
+  const seatHeight  = 1.2 + row * 0.9;   // metres above pitch level
+  const seatDist    = 22 + row * 2.5;    // distance from centre
+  const seatOffset  = (col - 5.5) * 2.8; // left-right offset along stand
+
+  const positions = {
+    A: {x: seatOffset, y: seatHeight, z:  seatDist},  // North — looking south toward pitch
+    B: {x: seatOffset, y: seatHeight, z: -seatDist},  // South — looking north
+    C: {x:  seatDist,  y: seatHeight, z: seatOffset}, // East  — looking west
+    D: {x: -seatDist,  y: seatHeight, z: seatOffset}, // West  — looking east
+  };
+  const pos = positions[sec.id];
+  initViewScene(pos);
+}
+
+function initViewScene(pos) {
+  const canvas = document.getElementById("viewCanvas");
+
+  // Destroy old renderer if exists
+  if (viewRenderer) { viewRenderer.dispose(); }
+
+  viewScene    = new THREE.Scene();
+  viewScene.background = new THREE.Color(0x87ceeb); // sky blue
+  viewScene.fog = new THREE.Fog(0x87ceeb, 30, 120);
+
+  viewCamera   = new THREE.PerspectiveCamera(75, canvas.offsetWidth/canvas.offsetHeight, 0.1, 200);
+  viewCamera.position.set(pos.x, pos.y, pos.z);
+  viewYaw=0; viewPitch=0;
+
+  viewRenderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  viewRenderer.setSize(canvas.offsetWidth, canvas.offsetHeight);
+  viewRenderer.shadowMap.enabled=true;
+
+  // Lights
+  viewScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const sun=new THREE.DirectionalLight(0xffffff, 1.0);
+  sun.position.set(10,30,10); sun.castShadow=true;
+  viewScene.add(sun);
+
+  buildViewScene();
+
+  // Look straight toward pitch centre from seat position
+  // yaw: point camera toward origin (0,0,0) from our position
+  viewYaw   = Math.atan2(-pos.x, -pos.z);
+  // pitch: slight downward tilt — just enough to see the pitch, not bird's eye
+  viewPitch = -0.08 - (pos.y * 0.015);
+  updateViewCamera(pos);
+
+  // Events
+  canvas.onmousedown  = e=>{ viewIsDragging=true; viewPrevMouse={x:e.clientX,y:e.clientY}; };
+  canvas.onmousemove  = e=>{ if(!viewIsDragging)return;
+    viewYaw   -= (e.clientX-viewPrevMouse.x)*0.005;
+    viewPitch  = Math.max(-0.5,Math.min(0.5,viewPitch-(e.clientY-viewPrevMouse.y)*0.005));
+    viewPrevMouse={x:e.clientX,y:e.clientY};
+    updateViewCamera(pos);
+  };
+  canvas.onmouseup = ()=>viewIsDragging=false;
+  canvas.ontouchstart = e=>{ viewIsDragging=true; viewPrevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY}; };
+  canvas.ontouchmove  = e=>{ if(!viewIsDragging)return;
+    viewYaw  -= (e.touches[0].clientX-viewPrevMouse.x)*0.005;
+    viewPitch = Math.max(-0.5,Math.min(0.5,viewPitch-(e.touches[0].clientY-viewPrevMouse.y)*0.005));
+    viewPrevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    updateViewCamera(pos);
+  };
+  canvas.ontouchend = ()=>viewIsDragging=false;
+
+  animateView();
+}
+
+function updateViewCamera(pos) {
+  const dir = new THREE.Vector3(
+    Math.sin(viewYaw)*Math.cos(viewPitch),
+    Math.sin(viewPitch),
+    Math.cos(viewYaw)*Math.cos(viewPitch)
+  );
+  viewCamera.lookAt(
+    viewCamera.position.x + dir.x,
+    viewCamera.position.y + dir.y,
+    viewCamera.position.z + dir.z
+  );
+}
+
+function buildViewScene() {
+  const s = viewScene;
+
+  // Ground / pitch
+  // Pitch — roughly 105x68m scaled down to 70x45 units
+  const pitchMat = new THREE.MeshLambertMaterial({color:0x2e7d32});
+  const pitch    = new THREE.Mesh(new THREE.BoxGeometry(70,0.3,45), pitchMat);
+  pitch.position.y=-0.15; pitch.receiveShadow=true; s.add(pitch);
+
+  // Surrounding ground (brown/clay)
+  const groundMat = new THREE.MeshLambertMaterial({color:0x5d4037});
+  const ground    = new THREE.Mesh(new THREE.BoxGeometry(200,0.1,200), groundMat);
+  ground.position.y=-0.3; ground.receiveShadow=true; s.add(ground);
+
+  // Pitch stripes
+  for(let i=0;i<14;i++){
+    if(i%2===0) continue;
+    const stripe=new THREE.Mesh(new THREE.BoxGeometry(5,0.01,45),new THREE.MeshLambertMaterial({color:0x388e3c}));
+    stripe.position.set(-32.5+i*5+2.5,0.01,0); s.add(stripe);
+  }
+
+  // White lines
+  const lm = new THREE.MeshBasicMaterial({color:0xffffff});
+  // Boundary lines
+  const blines=[[70,0.02,0.15,0,0.16,-22.4],[70,0.02,0.15,0,0.16,22.4],
+                [0.15,0.02,45,-34.9,0.16,0],[0.15,0.02,45,34.9,0.16,0]];
+  blines.forEach(([w,h,d,x,y,z])=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),lm); m.position.set(x,y,z); s.add(m); });
+  // Halfway line
+  const hw=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.02,45),lm); hw.position.set(0,0.16,0); s.add(hw);
+  // Centre circle
+  const cc=new THREE.Mesh(new THREE.TorusGeometry(9.15,0.12,8,48),lm);
+  cc.rotation.x=Math.PI/2; cc.position.y=0.16; s.add(cc);
+  // Centre spot
+  const cs=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,0.05,8),lm); cs.position.set(0,0.17,0); s.add(cs);
+  // Penalty boxes
+  [[-34.9,0],[34.9,0]].forEach(([px,pz])=>{
+    const sign=px<0?1:-1;
+    const pb=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.02,32.68),lm); pb.position.set(px+sign*16.5,0.16,0); s.add(pb);
+    const pt=new THREE.Mesh(new THREE.BoxGeometry(16.5,0.02,0.15),lm); pt.position.set(px+sign*8.25,0.16,-16.34); s.add(pt);
+    const pt2=new THREE.Mesh(new THREE.BoxGeometry(16.5,0.02,0.15),lm); pt2.position.set(px+sign*8.25,0.16,16.34); s.add(pt2);
+  });
+
+  // Stands (simplified blocks representing other seating areas)
+  const standMat=new THREE.MeshLambertMaterial({color:0x37474f});
+  [[0,8,50],[0,-8,50],[55,8,45],[-55,8,45]].forEach(([x,y,z],i)=>{
+    // skip — stands replaced by crowd color blocks below
+  });
+
+  // Crowd blocks - colourful seats on far stands
+  const colors=[0x1a73e8,0xe53935,0xfdd835,0x43a047,0xffffff];
+  // Stands — coloured seats on all 4 sides
+  // Far stand (north/south opposite)
+  for(let r=0;r<8;r++){
+    for(let col=0;col<28;col++){
+      const cm=new THREE.MeshLambertMaterial({color:colors[Math.floor(Math.random()*colors.length)]});
+      const seat=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.0,0.7),cm);
+      seat.position.set(-19+col*1.4, 1.5+r*2.2, -27-r*1.8);
+      s.add(seat);
+    }
+  }
+  // Near stand (behind viewer's section — behind camera so not visible, skip)
+  // Side stands (east and west)
+  for(let r=0;r<8;r++){
+    for(let col=0;col<20;col++){
+      const cm=new THREE.MeshLambertMaterial({color:colors[Math.floor(Math.random()*colors.length)]});
+      const sl=new THREE.Mesh(new THREE.BoxGeometry(0.7,1.0,1.4),cm);
+      sl.position.set(-38-r*1.8, 1.5+r*2.2, -14+col*1.4); s.add(sl);
+      const sr=new THREE.Mesh(new THREE.BoxGeometry(0.7,1.0,1.4),cm);
+      sr.position.set(38+r*1.8, 1.5+r*2.2, -14+col*1.4); s.add(sr);
+    }
+  }
+
+  // Goalposts
+  [[-29,0],[29,0]].forEach(([x,z])=>{
+    const postMat=new THREE.MeshBasicMaterial({color:0xffffff});
+    // Left post
+    const lp=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,2.5,8),postMat);
+    lp.position.set(x,1.25,z-3.66); s.add(lp);
+    // Right post
+    const rp=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,2.5,8),postMat);
+    rp.position.set(x,1.25,z+3.66); s.add(rp);
+    // Crossbar
+    const cb=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,7.32,8),postMat);
+    cb.rotation.z=Math.PI/2; cb.position.set(x,2.44,z); s.add(cb);
+  });
+
+  // Sky dome
+  const sky=new THREE.Mesh(
+    new THREE.SphereGeometry(150,16,8),
+    new THREE.MeshBasicMaterial({color:0x87ceeb,side:THREE.BackSide})
+  );
+  s.add(sky);
+
+  // Floodlights
+  [[48,30,32],[-48,30,32],[48,30,-32],[-48,30,-32]].forEach(([x,y,z])=>{
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.4,0.5,y,8),new THREE.MeshLambertMaterial({color:0x607d8b}));
+    pole.position.set(x,y/2,z); s.add(pole);
+    const light=new THREE.PointLight(0xfffacd,1.0,150);
+    light.position.set(x,y,z); s.add(light);
+  });
+}
+
+function animateView() {
+  if (!viewRenderer) return;
+  requestAnimationFrame(animateView);
+  viewRenderer.render(viewScene, viewCamera);
+}
+
+function closeView() {
+  document.getElementById("viewPanel").classList.remove("show");
+}
+
+// ── Clear selection ──
+function clearSelection() {
+  selectedSeat=null;
+  document.querySelectorAll(".seat.selected").forEach(s=>{
+    s.classList.remove("selected");
+    const sid=s.dataset.seatId.split("-")[0];
+    const f=SECTIONS.find(x=>x.id===sid);
+    if(f) s.querySelector("rect").setAttribute("fill",f.color);
+    s.querySelector("rect").setAttribute("opacity","0.85");
+  });
+  document.getElementById("confirmPanel").style.display="none";
+  document.getElementById("viewPanel").classList.remove("show");
+}
+
+// ── Purchase ──
+async function confirmPurchase() {
+  const btn=document.getElementById("buyBtn");
+  btn.disabled=true; btn.textContent="Processing…";
+  const res=await fetch(`/buy/${ticketData.id}`,{method:"POST"});
+  const data=await res.json();
+  const msg=document.getElementById("purchaseMsg");
+  if(res.ok){
+    msg.className="form-message success";
+    msg.textContent=`✅ Purchase successful! Seat ${selectedSeat} confirmed. Redirecting…`;
+    setTimeout(()=>window.location.href="buyer-dashboard.html",2000);
+  } else if(data.requiresVerification){
+    msg.className="form-message error";
+    msg.textContent="⚠️ You need to verify your account first.";
+    setTimeout(()=>window.location.href=`verify.html?redirect=seat-selector.html?id=${ticketData.id}`,1500);
+    btn.disabled=false; btn.textContent="✅ Confirm Purchase";
+  } else {
+    msg.className="form-message error";
+    msg.textContent="❌ "+data.message;
+    btn.disabled=false; btn.textContent="✅ Confirm Purchase";
+  }
+}
+
+async function switchMode(mode){
+  await fetch("/set-mode",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode})});
+  window.location.href=mode==="seller"?"seller-dashboard.html":"index.html";
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+</script>
+</body>
+</html>

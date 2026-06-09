@@ -1,0 +1,4 @@
+node_modules/
+ballpass.db
+.env
+*.log

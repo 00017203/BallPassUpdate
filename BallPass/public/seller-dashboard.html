@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seller Dashboard – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js loaded from CDN — no installation needed, loaded directly from cloudflare -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    /* ── Revenue banner styles ── */
+    .revenue-highlight {
+      background: linear-gradient(135deg, var(--blue), #0d47a1); /* Blue gradient background */
+      color: white;
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between; /* Pushes left and right content to opposite ends */
+      align-items: center;
+      flex-wrap: wrap; /* Stacks vertically on small screens */
+      gap: 16px;
+    }
+    .revenue-highlight .big-num { font-size: 2.8rem; font-weight: 700; line-height: 1; }
+    .revenue-highlight .label   { font-size: .9rem; opacity: .85; margin-top: 4px; }
+
+    /* ── Seat table styles ── */
+    .seat-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    /* border-collapse:collapse merges adjacent cell borders into one line */
+    .seat-table th {
+      background: var(--gray-100); padding: 10px 14px;
+      text-align: left; font-weight: 600; color: var(--gray-600);
+      border-bottom: 2px solid var(--gray-200); /* Thicker border under headers */
+    }
+    .seat-table td { padding: 10px 14px; border-bottom: 1px solid var(--gray-200); color: var(--gray-800); }
+    .seat-table tr:hover td { background: var(--gray-50); } /* Highlight row on hover */
+
+    /* ── Status badge pills ── */
+    .status-pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .75rem; font-weight: 600; }
+    .status-pill.available { background: var(--green-bg); color: var(--green); } /* Green for available */
+    .status-pill.sold      { background: var(--gray-100); color: var(--gray-600); } /* Grey for sold */
+  </style>
+</head>
+<body>
+
+<!-- Navbar — empty on load, filled by renderNav() after session check -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links" id="navLinks"></div>
+</nav>
+
+<div class="page-wrapper">
+
+  <!-- ── REVENUE BANNER ──────────────────────────────────────
+       Large coloured banner showing the seller's key financial stats.
+       JavaScript fills in the values after loading seller-stats from the server. -->
+  <div class="revenue-highlight">
+    <div>
+      <!-- Left side: total revenue and sold count -->
+      <div class="label">Total Revenue Earned</div>
+      <div class="big-num" id="totalRevenue">$0</div>
+      <!-- Updated by JavaScript with the sum of all sold ticket prices -->
+      <div class="label" style="margin-top:8px;" id="soldCount">0 tickets sold</div>
+    </div>
+    <div style="text-align:right;">
+      <!-- Right side: active listing count -->
+      <div class="label">Active Listings</div>
+      <div style="font-size:2rem; font-weight:700;" id="activeCount">0</div>
+      <div class="label" id="totalListings">of 0 total</div>
+    </div>
+  </div>
+
+  <!-- ── STAT CARDS ROW ────────────────────────────────────────
+       Four cards showing additional performance metrics.
+       All values are filled by JavaScript from the /api/seller-stats endpoint. -->
+  <div class="stats-row" style="margin-bottom:28px;">
+    <div class="stat-card">
+      <div class="stat-value" id="avgPrice">$0</div>
+      <div class="stat-label">Avg Listing Price</div>
+      <!-- Average price across ALL listings (available + sold) -->
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="convRate">0%</div>
+      <div class="stat-label">Sell-Through Rate</div>
+      <!-- Percentage of listings that were sold: (sold / total) × 100 -->
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="topMatch">—</div>
+      <div class="stat-label">Best Selling Match</div>
+      <!-- The match that generated the most revenue from sold tickets -->
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="topSection">—</div>
+      <div class="stat-label">Most Listed Section</div>
+      <!-- The stadium section with the most ticket listings -->
+    </div>
+  </div>
+
+  <!-- ── CHARTS ROW ─────────────────────────────────────────────
+       Two Chart.js charts rendered into <canvas> elements.
+       Chart.js requires a <canvas> tag and draws graphics into it. -->
+  <div class="charts-grid" style="margin-bottom:28px;">
+    <div class="chart-card">
+      <h3>Revenue by Match</h3>
+      <canvas id="chartRevByMatch" height="220"></canvas>
+      <!-- Bar chart: each bar = one match, height = total revenue from that match -->
+    </div>
+    <div class="chart-card">
+      <h3>Listings by Section</h3>
+      <canvas id="chartBySection" height="220"></canvas>
+      <!-- Doughnut chart: each slice = one section, size = number of listings in that section -->
+    </div>
+  </div>
+
+  <!-- ── SEAT-BY-SEAT TABLE ─────────────────────────────────────
+       HTML table showing every listing with full details.
+       overflow-x:auto allows horizontal scrolling on small screens. -->
+  <div class="section-title">💺 Seat-by-Seat Breakdown</div>
+  <div class="card" style="overflow-x:auto;">
+    <table class="seat-table" id="seatTable">
+      <thead>
+        <!-- Column headers — <th> elements are bold and styled differently from data cells -->
+        <tr>
+          <th>Match</th>
+          <th>Stadium</th>
+          <th>Section</th>
+          <th>Seat</th>
+          <th>Price</th>
+          <th>Date</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="seatTableBody">
+        <!-- Initially shows loading state — JavaScript replaces this with real rows -->
+        <tr><td colspan="7" style="text-align:center; color:var(--gray-400); padding:24px;">Loading…</td></tr>
+        <!-- colspan="7" makes this single cell span all 7 columns -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── LIST NEW TICKET FORM ──────────────────────────────────
+       Sellers use this to add new listings.
+       oninput on each field triggers instant validation. -->
+  <div class="section-title" style="margin-top:32px;">➕ List a New Ticket</div>
+  <div class="card" style="max-width:680px;">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+
+      <!-- Match name — validates inline using arrow function as condition -->
+      <div class="form-group">
+        <label>Match Name *</label>
+        <input type="text" id="s_match" placeholder="e.g. Arsenal vs Chelsea"
+               oninput="validateField('s_match','err_match',v=>v.trim().length>=5)" />
+        <!-- Arrow function v=>v.trim().length>=5 checks the value (v) has 5+ real characters -->
+        <div class="field-error" id="err_match">Min 5 characters.</div>
+      </div>
+
+      <!-- Price — validates that the value is a positive number -->
+      <div class="form-group">
+        <label>Price (USD) *</label>
+        <input type="number" id="s_price" placeholder="e.g. 120" min="1"
+               oninput="validateField('s_price','err_price',v=>!isNaN(v)&&Number(v)>0)" />
+        <!-- !isNaN(v) means "is a number", Number(v)>0 means "is positive" — both must be true -->
+        <div class="field-error" id="err_price">Must be a positive number.</div>
+      </div>
+
+      <!-- Location — required, at least 2 characters -->
+      <div class="form-group">
+        <label>City / Location *</label>
+        <input type="text" id="s_location" placeholder="e.g. London"
+               oninput="validateField('s_location','err_location',v=>v.trim().length>=2)" />
+        <div class="field-error" id="err_location">Please enter a location.</div>
+      </div>
+
+      <!-- Stadium — optional, no validation -->
+      <div class="form-group">
+        <label>Stadium</label>
+        <input type="text" id="s_stadium" placeholder="e.g. Emirates Stadium" />
+      </div>
+
+      <!-- Match date picker -->
+      <div class="form-group">
+        <label>Match Date</label>
+        <input type="date" id="s_date" />
+        <!-- Default value set to 7 days from today by JavaScript on page load -->
+      </div>
+
+      <!-- Section dropdown -->
+      <div class="form-group">
+        <label>Section</label>
+        <select id="s_section">
+          <option value="A">Section A</option>
+          <option value="B">Section B</option>
+          <option value="C">Section C</option>
+          <option value="D">Section D</option>
+          <option value="VIP">VIP</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Seat number — outside the grid so it takes half width -->
+    <div class="form-group" style="max-width:340px;">
+      <label>Seat Number</label>
+      <input type="text" id="s_seat" placeholder="e.g. B-14" />
+    </div>
+
+    <button class="btn btn-success" onclick="submitTicket()">➕ List Ticket</button>
+    <div class="form-message" id="sellMsg"></div>
+    <!-- Status message — filled by JavaScript with success or error feedback -->
+  </div>
+
+</div><!-- end .page-wrapper -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── PAGE-LEVEL STATE ──────────────────────────────────────────
+let listings = []; // Stores all the seller's ticket listings — used for building charts and the table
+
+// ── PAGE INITIALISATION ───────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // Check who is logged in
+  const meRes = await fetch("/me");
+  const me    = (await meRes.json()).user; // Extract user object from response
+
+  // Guard: if not logged in, redirect to login
+  if (!me) { window.location.href = "login.html"; return; }
+
+  // Guard: if in buyer mode, redirect to marketplace
+  // Sellers only — buyers should not access this page
+  if (me.mode === "buyer") { window.location.href = "index.html"; return; }
+
+  renderNav(me);    // Build the navbar with seller-specific links
+  await loadData(); // Fetch listings and stats, then render everything
+
+  // Set the match date input default to 7 days from today
+  const d = new Date();          // Current date
+  d.setDate(d.getDate() + 7);   // Add 7 days
+  document.getElementById("s_date").value = d.toISOString().split("T")[0];
+  // .split("T")[0] extracts just the date part "YYYY-MM-DD" from the ISO string
+});
+
+// ── renderNav ─────────────────────────────────────────────────
+// Builds the navbar for seller mode with links to seller-specific pages.
+
+function renderNav(me) {
+  document.getElementById("navLinks").innerHTML = `
+    <a href="index.html">Marketplace</a>
+    <a href="seller-dashboard.html">Dashboard</a>
+    <a href="seller-analytics.html">Analytics</a>
+    <span class="nav-user">🏷 ${me.name}</span>
+    <button class="btn-nav" style="background:rgba(255,255,255,.2);margin-right:4px;" onclick="switchToBuyer()">Switch to Buyer</button>
+    <button class="btn-nav" onclick="logout()">Logout</button>`;
+  // Template literal builds the full HTML string in one go
+  // me.name inserts the logged-in user's name
+}
+
+// ── loadData ──────────────────────────────────────────────────
+// Fetches all listings and seller stats simultaneously, then renders everything.
+
+async function loadData() {
+  const [lRes, sRes] = await Promise.all([
+    fetch("/my-listings"),      // GET /my-listings — this seller's tickets (all statuses)
+    fetch("/api/seller-stats")  // GET /api/seller-stats — computed stats for this seller
+  ]);
+  // Promise.all() runs both fetches at the same time (in parallel) instead of one after the other.
+  // This is faster — both requests travel to the server simultaneously.
+  // It waits until BOTH are done, then continues.
+  // Destructuring: [lRes, sRes] assigns the two results to named variables
+
+  listings    = await lRes.json(); // Parse listings array
+  const stats = await sRes.json(); // Parse stats object
+
+  // ── Update revenue banner ──
+  document.getElementById("totalRevenue").textContent = `$${stats.totalRevenue}`;
+  document.getElementById("soldCount").textContent    = `${stats.totalSold} ticket${stats.totalSold !== 1 ? 's' : ''} sold`;
+  // Ternary for pluralisation: if totalSold is not 1, add 's' (e.g. "2 tickets") else no 's' (e.g. "1 ticket")
+  document.getElementById("activeCount").textContent   = stats.totalActive;
+  document.getElementById("totalListings").textContent = `of ${listings.length} total`;
+  // listings.length is the total count of all listings (active + sold)
+
+  // ── Update stat cards ──
+  document.getElementById("avgPrice").textContent   = `$${stats.avgPrice}`;
+  document.getElementById("convRate").textContent   = stats.convRate + "%";
+  document.getElementById("topMatch").textContent   = stats.topMatch   || "—"; // "—" if no sales yet
+  document.getElementById("topSection").textContent = stats.topSection || "—"; // "—" if no listings
+
+  // ── Render seat table ──
+  const tbody = document.getElementById("seatTableBody"); // The <tbody> element to fill
+
+  if (!listings.length) {
+    // No listings at all — show helpful empty message
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:24px;">No listings yet. Add your first ticket below.</td></tr>`;
+  } else {
+    // Build one <tr> per listing using .map() and join into one string
+    tbody.innerHTML = listings.map(t => {
+      const date = t.match_date
+        ? new Date(t.match_date).toLocaleDateString("en-GB") // Format as "15/06/2026"
+        : "TBC"; // Show TBC if no date stored
+
+      // Template literal for one table row — each <td> holds one piece of ticket data
+      return `<tr>
+        <td><strong>${esc(t.match)}</strong></td>
+        <td>${esc(t.stadium || "—")}</td>
+        <!-- t.stadium||"—" shows a dash if stadium is empty or null -->
+        <td>${esc(t.section || "—")}</td>
+        <td>${esc(t.seat_number || "—")}</td>
+        <td><strong>$${t.price}</strong></td>
+        <td>${date}</td>
+        <td>
+          <span class="status-pill ${t.status}">${t.status}</span>
+          <!-- status-pill class + t.status adds either "status-pill available" or "status-pill sold"
+               The CSS then colours it green or grey accordingly -->
+        </td>
+      </tr>`;
+    }).join(""); // Join all row strings with no separator
+  }
+
+  // ── Chart 1: Revenue by Match (Bar chart) ──────────────────
+  // Build an object mapping each match name to total revenue from that match
+
+  const revenueByMatch = {}; // e.g. { "Arsenal vs Chelsea": 120, "PSG vs Marseille": 180 }
+  listings
+    .filter(t => t.status === "sold") // Only count sold tickets — unsold tickets have no revenue
+    .forEach(t => {
+      revenueByMatch[t.match] = (revenueByMatch[t.match] || 0) + t.price;
+      // If this match already has revenue, add to it; if not, start from 0
+    });
+
+  new Chart(document.getElementById("chartRevByMatch"), {
+    type: "bar", // Bar chart type
+    data: {
+      labels: Object.keys(revenueByMatch).length
+        ? Object.keys(revenueByMatch)   // Match names as x-axis labels
+        : ["No sales yet"],             // Fallback if no sales exist
+      datasets: [{
+        label: "Revenue ($)",
+        data: Object.values(revenueByMatch).length
+          ? Object.values(revenueByMatch) // Revenue amounts as bar heights
+          : [0],                          // Fallback: single 0 bar
+        backgroundColor: "#1a73e8",      // Blue bars
+        borderRadius: 6                  // Rounded bar tops
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } }, // Hide the legend (only one dataset so it's redundant)
+      scales:  { y: { beginAtZero: true } }    // Y-axis starts at 0
+    }
+  });
+  // new Chart() creates and renders the chart immediately into the canvas element
+
+  // ── Chart 2: Listings by Section (Doughnut chart) ──────────
+  // Count how many listings exist in each section
+
+  const bySection = {}; // e.g. { "A": 3, "B": 2, "VIP": 1 }
+  listings.forEach(t => {
+    bySection[t.section || "?"] = (bySection[t.section || "?"] || 0) + 1;
+    // t.section||"?" uses "?" for tickets with no section — prevents undefined key
+  });
+
+  new Chart(document.getElementById("chartBySection"), {
+    type: "doughnut", // Doughnut chart (like a pie chart with a hole in the middle)
+    data: {
+      labels: Object.keys(bySection),   // Section names (A, B, C, D, VIP)
+      datasets: [{
+        data: Object.values(bySection), // Count of listings per section
+        backgroundColor: ["#1a73e8","#e53935","#43a047","#fb8c00","#8e24aa"],
+        // Different colour for each section slice
+        borderWidth: 2,     // Thin white border between slices
+        borderColor: "#fff" // White border colour
+      }]
+    },
+    options: { plugins: { legend: { position: "bottom" } } }
+    // Legend (colour key) shown below the chart
+  });
+}
+
+// ── validateField ─────────────────────────────────────────────
+// Generic field validator — same pattern as other pages.
+// id        — input element ID
+// errId     — error message div ID
+// condition — arrow function that tests the input value
+
+function validateField(id, errId, condition) {
+  const el  = document.getElementById(id);    // The input element
+  const err = document.getElementById(errId); // The error message div
+  const ok  = condition(el.value);            // Run the condition — returns true or false
+
+  el.classList.toggle("error", !ok);  // Add/remove red border
+  el.classList.toggle("valid",  ok);  // Add/remove green border
+  err.classList.toggle("show",  !ok); // Show/hide error message
+
+  return ok; // Return result so submitTicket() can check all fields
+}
+
+// ── submitTicket ──────────────────────────────────────────────
+// Validates all required fields and sends the new ticket to the server.
+
+async function submitTicket() {
+  // Validate all three required fields
+  const v1 = validateField("s_match",    "err_match",    v => v.trim().length >= 5);
+  const v2 = validateField("s_price",    "err_price",    v => !isNaN(v) && Number(v) > 0);
+  const v3 = validateField("s_location", "err_location", v => v.trim().length >= 2);
+  if (!v1 || !v2 || !v3) return; // Stop if any field is invalid
+
+  // Send the ticket data to the server
+  const res = await fetch("/tickets", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      match:       document.getElementById("s_match").value.trim(),
+      price:       document.getElementById("s_price").value,
+      location:    document.getElementById("s_location").value.trim(),
+      stadium:     document.getElementById("s_stadium").value.trim(),
+      match_date:  document.getElementById("s_date").value,
+      section:     document.getElementById("s_section").value,
+      seat_number: document.getElementById("s_seat").value.trim(),
+    })
+  });
+
+  const data = await res.json();                    // Parse server response
+  const msg  = document.getElementById("sellMsg"); // Status message div
+
+  if (res.ok) {
+    // Success — show message, clear form, refresh data
+    msg.className   = "form-message success";
+    msg.textContent = "✅ Ticket listed successfully!";
+    // Clear all text/number inputs after successful submission
+    ["s_match","s_price","s_location","s_stadium","s_seat"].forEach(id =>
+      document.getElementById(id).value = ""
+    );
+    showToast("Ticket listed!", "success"); // Brief popup notification
+    await loadData(); // Reload listings and charts so new ticket appears immediately
+  } else if (data.requiresVerification) {
+    // Server rejected because the account is not verified
+    msg.className   = "form-message error";
+    msg.textContent = "⚠️ You need to verify your account before listing tickets.";
+    setTimeout(() => window.location.href = "verify.html?redirect=seller-dashboard.html", 1500);
+    // After 1.5 seconds, redirect to verification page
+    // ?redirect=seller-dashboard.html passes where to return after verifying
+  } else {
+    // Other server error (e.g. validation failed)
+    msg.className   = "form-message error";
+    msg.textContent = "❌ " + data.message;
+  }
+}
+
+// ── switchToBuyer ─────────────────────────────────────────────
+// Sends mode change request to server and navigates to buyer marketplace.
+
+async function switchToBuyer() {
+  await fetch("/set-mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "buyer" }) // Tell server to set session mode to "buyer"
+  });
+  window.location.href = "index.html"; // Navigate to the buyer marketplace
+}
+
+// ── logout ────────────────────────────────────────────────────
+async function logout() {
+  await fetch("/logout", { method: "POST" }); // Destroy session on server
+  window.location.href = "landing.html";      // Return to landing page
+}
+
+// ── esc ───────────────────────────────────────────────────────
+// Escapes HTML special characters to prevent XSS attacks.
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── showToast ─────────────────────────────────────────────────
+// Shows a brief popup notification at the bottom-right corner.
+function showToast(msg, type="") {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast show" + (type ? " " + type : "");
+  setTimeout(() => t.classList.remove("show"), 3000); // Auto-hide after 3 seconds
+}
+</script>
+</body>
+</html>

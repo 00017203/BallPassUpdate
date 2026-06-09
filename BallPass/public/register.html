@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register – BallPass</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Navbar — simplified version for auth pages (no dashboard links) -->
+<nav class="navbar">
+  <div class="navbar-brand"><span>⚽</span> BallPass</div>
+  <div class="nav-links">
+    <a href="landing.html">Home</a>
+    <a href="login.html">Login</a>
+    <a href="register.html" class="btn-nav">Register</a>
+  </div>
+</nav>
+
+<!-- Centered flex container — vertically and horizontally centres the form card -->
+<div style="display:flex; align-items:center; justify-content:center; min-height:calc(100vh - 60px); padding:20px;">
+  <!-- min-height:calc(100vh - 60px) fills the full viewport height minus the navbar -->
+
+  <div class="form-card">
+    <!-- form-card is a CSS class defined in style.css — gives a white card with shadow -->
+    <h1>Create account</h1>
+    <p class="subtitle">Join BallPass – secure football ticket exchange</p>
+
+    <!-- Full name field -->
+    <div class="form-group">
+      <label for="name">Full name</label>
+      <!-- for="name" links the label to the input with id="name" — clicking the label focuses the input -->
+      <input type="text" id="name" placeholder="John Smith"
+             oninput="validateName()" onblur="validateName()" />
+      <!-- oninput fires on every keystroke for live validation -->
+      <!-- onblur fires when the user clicks away from the field (lost focus) -->
+      <div class="field-error" id="err_name">Name must be at least 2 characters.</div>
+      <!-- Hidden by default — shown by JavaScript when validation fails -->
+    </div>
+
+    <!-- Email field -->
+    <div class="form-group">
+      <label for="email">Email address</label>
+      <input type="email" id="email" placeholder="you@example.com"
+             oninput="validateEmail()" onblur="validateEmail()" />
+      <!-- type="email" tells mobile browsers to show the email keyboard -->
+      <div class="field-error" id="err_email">Please enter a valid email address.</div>
+    </div>
+
+    <!-- Password field -->
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="Min. 6 characters"
+             oninput="validatePassword()" onblur="validatePassword()" />
+      <!-- type="password" hides the characters as dots -->
+      <div class="field-error" id="err_password">Password must be at least 6 characters.</div>
+
+      <!-- Password strength meter — a coloured bar that grows as the password gets stronger -->
+      <div id="strengthBar" style="margin-top:6px; height:4px; border-radius:4px; background:var(--gray-200); overflow:hidden;">
+        <!-- The grey background bar — the coloured fill sits inside it -->
+        <div id="strengthFill" style="height:100%; width:0%; transition:width .3s, background .3s;"></div>
+        <!-- width starts at 0% and grows via JavaScript — transition animates the change smoothly -->
+      </div>
+      <div id="strengthLabel" style="font-size:.75rem; color:var(--gray-400); margin-top:3px;"></div>
+      <!-- Shows text like "Weak", "Fair", "Good", "Strong" -->
+    </div>
+
+    <!-- Confirm password field -->
+    <div class="form-group">
+      <label for="confirm">Confirm password</label>
+      <input type="password" id="confirm" placeholder="Repeat password"
+             oninput="validateConfirm()" onblur="validateConfirm()"
+             onkeydown="if(event.key==='Enter') registerUser()" />
+      <!-- onkeydown: pressing Enter in this field submits the form — same as clicking the button -->
+      <div class="field-error" id="err_confirm">Passwords do not match.</div>
+    </div>
+
+    <!-- Submit button — calls registerUser() when clicked -->
+    <button class="btn btn-primary btn-full" onclick="registerUser()" id="regBtn">Create Account</button>
+
+    <!-- Status message div — JavaScript writes success or error messages here -->
+    <div class="form-message" id="regMsg"></div>
+
+    <!-- Link to login page for existing users -->
+    <p style="text-align:center; margin-top:20px; font-size:.88rem; color:var(--gray-600);">
+      Already have an account? <a href="login.html" style="color:var(--blue); font-weight:600;">Log in</a>
+    </p>
+  </div>
+</div>
+
+<script>
+// ── VALIDATION FUNCTIONS ──────────────────────────────────────
+// Each function checks one field and calls setField() to show/hide the error.
+// All return true (valid) or false (invalid) so registerUser() can check them.
+
+function validateName() {
+  return setField("name", "err_name",
+    document.getElementById("name").value.trim().length >= 2);
+  // .trim() removes whitespace — checks the name has at least 2 real characters
+}
+
+function validateEmail() {
+  return setField("email", "err_email",
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(document.getElementById("email").value));
+  // Regex test for valid email format:
+  // ^ = start of string
+  // [^\s@]+ = one or more characters that are NOT whitespace or @
+  // @ = literal @ symbol
+  // [^\s@]+ = domain name characters
+  // \. = literal dot
+  // [^\s@]+ = top-level domain characters (e.g. "com")
+  // $ = end of string
+}
+
+function validatePassword() {
+  const v = document.getElementById("password").value; // Get current password value
+  updateStrength(v);  // Update the strength meter bar
+  return setField("password", "err_password", v.length >= 6); // Must be at least 6 characters
+}
+
+function validateConfirm() {
+  return setField("confirm", "err_confirm",
+    document.getElementById("confirm").value === document.getElementById("password").value
+    && document.getElementById("confirm").value.length > 0);
+  // Both conditions must be true:
+  // 1. confirm field exactly matches password field
+  // 2. confirm field is not empty (avoids showing "valid" when both are blank)
+}
+
+// ── setField ─────────────────────────────────────────────────
+// Applies or removes CSS classes on an input and its error message.
+// inputId — the ID of the <input> element
+// errId   — the ID of the error message <div>
+// valid   — true if the field passes validation, false if it fails
+
+function setField(inputId, errId, valid) {
+  const el  = document.getElementById(inputId); // The input element
+  const err = document.getElementById(errId);   // The error message div
+  if (valid) {
+    el.classList.remove("error");  // Remove red border
+    el.classList.add("valid");     // Add green border
+    err.classList.remove("show");  // Hide error message
+  } else {
+    el.classList.add("error");     // Add red border
+    el.classList.remove("valid");  // Remove green border
+    err.classList.add("show");     // Show error message
+  }
+  return valid; // Pass the result back to the caller
+}
+
+// ── updateStrength ────────────────────────────────────────────
+// Updates the password strength bar based on how complex the password is.
+// Checks 5 criteria and gives a score from 0–5.
+
+function updateStrength(pw) {
+  let score = 0; // Start with 0 points
+
+  if (pw.length >= 6)  score++;  // At least 6 characters
+  if (pw.length >= 10) score++;  // At least 10 characters (bonus point for longer passwords)
+  if (/[A-Z]/.test(pw)) score++; // Contains at least one uppercase letter
+  if (/[0-9]/.test(pw)) score++; // Contains at least one number
+  if (/[^A-Za-z0-9]/.test(pw)) score++; // Contains at least one special character (not a letter or number)
+
+  // Map each score to a visual representation
+  const levels = [
+    { pct:"0%",   color:"transparent", text:"" },       // Score 0 — empty bar, no label
+    { pct:"25%",  color:"#e53935",     text:"Weak" },   // Score 1 — red bar
+    { pct:"50%",  color:"#fb8c00",     text:"Fair" },   // Score 2 — orange bar
+    { pct:"75%",  color:"#fdd835",     text:"Good" },   // Score 3 — yellow bar
+    { pct:"100%", color:"#43a047",     text:"Strong" }, // Score 4+ — green bar
+  ];
+  const lvl = levels[Math.min(score, 4)];
+  // Math.min(score, 4) caps at index 4 so we don't go out of bounds
+
+  document.getElementById("strengthFill").style.width      = lvl.pct;   // Expand the bar
+  document.getElementById("strengthFill").style.background = lvl.color; // Change the colour
+  document.getElementById("strengthLabel").textContent     = lvl.text;  // Update the text label
+}
+
+// ── registerUser ──────────────────────────────────────────────
+// Called when the "Create Account" button is clicked.
+// Validates all fields, then sends a registration request to the server.
+
+async function registerUser() {
+  // Run all four validators — each returns true or false
+  const v1 = validateName();
+  const v2 = validateEmail();
+  const v3 = validatePassword();
+  const v4 = validateConfirm();
+
+  if (!v1 || !v2 || !v3 || !v4) return;
+  // If any field is invalid, stop here — errors are already shown by the validators
+
+  // Disable the button to prevent double-submissions while waiting for the server
+  const btn = document.getElementById("regBtn");
+  btn.disabled = true;
+  btn.textContent = "Creating account…"; // Visual feedback that something is happening
+
+  try {
+    const res = await fetch("/register", {
+      method: "POST",                                   // POST to create a new user
+      headers: { "Content-Type": "application/json" },  // Tells server to expect JSON
+      body: JSON.stringify({
+        name:     document.getElementById("name").value.trim(),     // Trimmed name
+        email:    document.getElementById("email").value.trim(),    // Trimmed email
+        password: document.getElementById("password").value,        // Plain password (server will hash it)
+        role:     "buyer", // Default role — user chooses buyer/seller mode at the choose-mode screen
+      })
+    });
+
+    const data = await res.json(); // Parse the server's response
+    const msg  = document.getElementById("regMsg"); // Get the status message div
+
+    if (res.ok) {
+      // Registration succeeded (server returned 201 Created)
+      msg.className   = "form-message success";
+      msg.textContent = "✅ Account created! Choosing your mode…";
+      setTimeout(() => window.location.href = "choose-mode.html", 900);
+      // After 0.9 seconds, redirect to the mode selection screen
+      // The server already started a session, so the user is logged in automatically
+    } else {
+      // Server returned an error (e.g. email already registered, validation failed)
+      msg.className   = "form-message error";
+      msg.textContent = "❌ " + data.message; // Show the specific error from the server
+      btn.disabled    = false;
+      btn.textContent = "Create Account"; // Re-enable the button so they can try again
+    }
+  } catch {
+    // Network error — server might be offline
+    document.getElementById("regMsg").className   = "form-message error";
+    document.getElementById("regMsg").textContent = "❌ Network error. Please try again.";
+    btn.disabled    = false;
+    btn.textContent = "Create Account";
+  }
+}
+</script>
+</body>
+</html>
