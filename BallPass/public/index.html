@@ -482,7 +482,7 @@ async function deleteTicket(id) {
 // Escapes special HTML characters in user-provided text.
 // This prevents XSS (Cross-Site Scripting) attacks where a malicious user
 // could inject HTML or JavaScript into the page by putting it in a ticket name.
-// e.g. a match name of "<script>alert('hacked')</script>" would be rendered as
+// e.g. a match name of "[script]alert(hacked)[/script]" would be rendered as
 // safe text instead of executing as code.
 
 function escHtml(s) {
